@@ -16,7 +16,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { ReportDataEntry } from "@/types/types";
 
 interface menuProps {
-  reportData: ReportDataEntry[];
+  reportData: any[];
   selectedMonthTitle: string;
   generateHTML: () => string;
 }
@@ -33,7 +33,7 @@ export default function Menu({
     if (reportData.length === 0) {
       ToastAndroid.show(
         "No data to print for the selected month",
-        ToastAndroid.SHORT
+        ToastAndroid.SHORT,
       );
       return;
     }
@@ -45,7 +45,7 @@ export default function Menu({
 
       const fileName = `Ecomoney_Report_${selectedMonthTitle.replace(
         / /g,
-        "_"
+        "_",
       )}.pdf`;
       const newUri = FileSystem.documentDirectory + fileName;
 
@@ -70,7 +70,7 @@ export default function Menu({
     if (reportData.length === 0) {
       ToastAndroid.show(
         "No data to save for the selected month",
-        ToastAndroid.SHORT
+        ToastAndroid.SHORT,
       );
       return;
     }
@@ -87,7 +87,7 @@ export default function Menu({
           });
           const fileName = `Ecomoney_Report_${selectedMonthTitle.replace(
             / /g,
-            "_"
+            "_",
           )}.pdf`;
           const mimeType = "application/pdf";
 
@@ -95,7 +95,7 @@ export default function Menu({
             await FileSystem.StorageAccessFramework.createFileAsync(
               permissions.directoryUri,
               fileName,
-              mimeType
+              mimeType,
             );
           await FileSystem.writeAsStringAsync(newFileUri, base64, {
             encoding: FileSystem.EncodingType.Base64,

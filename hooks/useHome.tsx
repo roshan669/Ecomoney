@@ -34,6 +34,8 @@ interface HomeContextType {
   setItemToDelete: (value: string) => void;
   setAddName: (value: string) => void;
   addName: string;
+  addAmount: string;
+  setAddAmount: (value: string) => void;
   bottomSheetModalRef: React.Ref<any>;
   handleAdd: () => void;
   inputRefs: React.RefObject<(TextInput | null)[]>;
@@ -84,6 +86,10 @@ const HomeContext = createContext<HomeContextType>({
   setAddName: () => {
     console.log("wrap the layot with useHome provider");
   },
+  addAmount: "",
+  setAddAmount: () => {
+    console.log("wrap the layot with useHome provider");
+  },
   bottomSheetModalRef: { current: null },
   handleAdd: () => {
     console.log("wrap the layot with useHome provider");
@@ -99,6 +105,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   const [perfer, setPerfer] = useState<string>("");
   const [allinputs, setAllInputs] = useState<input[]>([]);
   const [addName, setAddName] = useState<string>("");
+  const [addAmount, setAddAmount] = useState<string>("");
   const [showWarning, setShowWarning] = useState<string | null>(null);
   const [agree, setAgree] = useState<boolean>(false);
   const [dataToUpdate, setDataToUpdate] = useState<ReportData | null>(null);
@@ -109,8 +116,13 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   const loadPreferences = useCallback(async () => {
     try {
       const storedData = await AsyncStorage.getItem("perfer");
-      const existingData: input[] = storedData ? JSON.parse(storedData) : [];
-      setAllInputs(existingData);
+      const rawData: any[] = storedData ? JSON.parse(storedData) : [];
+      const normalized: input[] = rawData.map((item) => ({
+        name: item.name,
+        category: item.category || item.toggle || "other",
+        value: typeof item.value === "number" ? item.value : 0,
+      }));
+      setAllInputs(normalized);
     } catch (error) {
       console.error("Error loading preferences:", error);
       ToastAndroid.show("Error loading preferences", ToastAndroid.SHORT);
@@ -138,7 +150,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
         ToastAndroid.show("Error deleting preference", ToastAndroid.SHORT);
       }
     },
-    [loadPreferences]
+    [loadPreferences],
   );
 
   const handleSheetClose = React.useCallback(() => {
@@ -147,14 +159,21 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
 
   const handleAdd = useCallback(async () => {
     const trimmedName = addName.trim();
+    const trimmedAmount = addAmount.trim();
+
     if (trimmedName === "") {
-      ToastAndroid.show("Please enter Item Name", ToastAndroid.SHORT);
+      ToastAndroid.show("Please enter Expense Name", ToastAndroid.SHORT);
       return;
     }
-    if (perfer === "") {
-      ToastAndroid.show("Please Select Type", ToastAndroid.SHORT);
+
+    const amountNumber = trimmedAmount === "" ? 0 : parseInt(trimmedAmount, 10);
+    if (Number.isNaN(amountNumber) || amountNumber < 0) {
+      ToastAndroid.show("Enter a valid amount", ToastAndroid.SHORT);
       return;
     }
+
+    // Default to 'other' category if not selected
+    const selectedCategory = perfer === "" ? "other" : perfer;
 
     try {
       const storedData = await AsyncStorage.getItem("perfer");
@@ -163,35 +182,39 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       // Check if name already exists
       if (
         existingData.some(
-          (item) => item.name.toLowerCase() === trimmedName.toLowerCase()
+          (item) => item.name.toLowerCase() === trimmedName.toLowerCase(),
         )
       ) {
         ToastAndroid.show(
           `'${trimmedName}' already exists`,
-          ToastAndroid.SHORT
+          ToastAndroid.SHORT,
         );
         return;
       }
 
-      const newData = {
+      const newData: input = {
         name: trimmedName,
-        toggle: perfer,
+        category: selectedCategory,
+        value: amountNumber,
       };
 
-      existingData.push(newData);
-      await AsyncStorage.setItem("perfer", JSON.stringify(existingData));
+      const updatedInputs = [...existingData, newData];
+      await AsyncStorage.setItem("perfer", JSON.stringify(updatedInputs));
 
-      // Reset modal state and reload preferences
+      // Update UI lists immediately
+      setAllInputs(updatedInputs);
+
+      // Reset modal state
       setAddName("");
+      setAddAmount("");
       setPerfer("");
-      loadPreferences(); // Reload preferences to update UI
       handleSheetClose();
-      ToastAndroid.show("Added successfully", ToastAndroid.SHORT);
+      ToastAndroid.show("Expense added successfully", ToastAndroid.SHORT);
     } catch (error) {
       console.error("Error saving preference:", error);
       ToastAndroid.show("Error saving preference", ToastAndroid.SHORT);
     }
-  }, [addName, perfer, loadPreferences, handleSheetClose]);
+  }, [addName, addAmount, perfer, setAllInputs, handleSheetClose]);
 
   React.useEffect(() => {
     loadPreferences();
@@ -199,18 +222,16 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
 
   React.useEffect(() => {
     const initialExpList: list[] = [];
-    const initialIncList: list[] = [];
 
     allinputs.forEach((input) => {
-      if (input.toggle === "expense") {
-        initialExpList.push({ name: input.name, value: 0 });
-      } else if (input.toggle === "income") {
-        initialIncList.push({ name: input.name, value: 0 });
-      }
+      initialExpList.push({
+        name: input.name,
+        value: input.value ?? 0,
+        category: input.category || "other",
+      });
     });
 
     setExpList(initialExpList);
-    setIncList(initialIncList);
   }, [allinputs]);
 
   React.useEffect(() => {
@@ -226,7 +247,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
             : [];
 
           const existingEntryIndex = existingData.findIndex(
-            (item) => item.todaysDate === dataToUpdate.todaysDate
+            (item) => item.todaysDate === dataToUpdate.todaysDate,
           );
 
           if (existingEntryIndex !== -1) {
@@ -267,6 +288,8 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       agree,
       setAddName,
       addName,
+      addAmount,
+      setAddAmount,
       allinputs,
       perfer,
       incList,
@@ -274,6 +297,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       totalGrossIncome,
       netIncome,
       setAgree,
+      setAddAmount,
       setAllInputs,
       setDataToUpdate,
       setExpList,
@@ -292,6 +316,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       dataToUpdate,
       agree,
       addName,
+      addAmount,
       allinputs,
       perfer,
       incList,
@@ -299,7 +324,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       totalGrossIncome,
       netIncome,
       showWarning,
-    ]
+    ],
   );
 
   return (

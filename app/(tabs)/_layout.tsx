@@ -7,33 +7,28 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: "#000",
-        animation: "fade",
+        // animation: "fade", // Removed to prevent shadow artifacts on Android
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          headerTitleAlign: "center",
           title: "Home",
-          headerTitle: "Today: " + datestr,
-          headerTitleStyle: { fontSize: 24, fontWeight: "bold" },
-          headerStatusBarHeight: 0,
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "home-sharp" : "home-outline"}
+              name={focused ? "home" : "home-outline"}
               color={color}
               size={24}
             />
           ),
-          headerStyle: { elevation: 1 },
-          headerTitleContainerStyle: { elevation: 0, borderWidth: 0 },
         }}
       />
 
       <Tabs.Screen
         name="report"
         options={{
-          //   animation: "shift",
+          // animation: "shift", // Removed to prevent shadow artifacts
           headerTitleAlign: "center",
           title: "Report",
           headerShown: false,

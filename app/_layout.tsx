@@ -1,13 +1,14 @@
-import { Colors } from "@/constants/theme";
 import { HomeProvider } from "@/hooks/useHome";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { Stack, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 
-import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+
+import { Colors } from "@/constants/theme";
 
 function Layout() {
   const router = useRouter();
@@ -35,10 +36,14 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <BottomSheetModalProvider>
         <HomeProvider>
-          <StatusBar style="inverted" />
+          <StatusBar
+            style="light"
+            backgroundColor="#6366f1"
+            translucent={false}
+          />
           <SafeAreaView
-            edges={["top"]}
-            style={{ flex: 1, backgroundColor: "#fff" }}
+            edges={["bottom", "top"]}
+            style={{ flex: 1, backgroundColor: "#f5f7fa" }}
           >
             <Layout />
           </SafeAreaView>

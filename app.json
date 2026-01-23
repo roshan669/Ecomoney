@@ -34,7 +34,7 @@
         {
           "image": "./assets/images/adaptive-icon.png",
           "imageWidth": 150,
-          "resizeMode": "native",
+          "resizeMode": "COVER",
           "backgroundColor": "#ffffff",
           "dark": {
             "backgroundColor": "#000000"

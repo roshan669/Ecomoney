@@ -3,10 +3,9 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  ToastAndroid,
   TouchableOpacity,
   FlatList,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
 import React, {
   useState,
@@ -15,148 +14,168 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { Table, Row, Rows } from "react-native-table-component";
+import { Table, Row } from "react-native-table-component";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
-import type { ReportDataEntry } from "@/types/types";
+import { PieChart as GiftedPieChart } from "react-native-gifted-charts";
+import type { ReportData } from "@/types/types";
 import Menu from "@/components/Menu.modal";
 
+// --- Components ---
+
+// 1. Month Pill
+const MonthPill = ({
+  label,
+  isSelected,
+  onPress,
+}: {
+  label: string;
+  isSelected: boolean;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    style={[styles.monthPill, isSelected && styles.monthPillSelected]}
+    activeOpacity={0.7}
+  >
+    <Text
+      style={[styles.monthPillText, isSelected && styles.monthPillTextSelected]}
+    >
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+// 2. Summary Card
+const SummaryCard = ({
+  title,
+  value,
+  icon,
+  color,
+}: {
+  title: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+}) => (
+  <View style={styles.summaryCardContainer}>
+    <View style={styles.summaryCardContent}>
+      <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={24} color={color} />
+      </View>
+      <View>
+        <Text style={styles.summaryLabel}>{title}</Text>
+        <Text style={styles.summaryValue}>{value}</Text>
+      </View>
+    </View>
+  </View>
+);
+
+// 3. Segmented Control
+const ViewSegmentControl = ({
+  selected,
+  onSelect,
+}: {
+  selected: "chart" | "table";
+  onSelect: (v: "chart" | "table") => void;
+}) => (
+  <View style={styles.segmentContainer}>
+    <TouchableOpacity
+      style={[
+        styles.segmentButton,
+        selected === "chart" && styles.segmentButtonActive,
+      ]}
+      onPress={() => onSelect("chart")}
+    >
+      <Ionicons
+        name="pie-chart"
+        size={18}
+        color={selected === "chart" ? "#4F46E5" : "#6B7280"}
+      />
+      <Text
+        style={[
+          styles.segmentText,
+          selected === "chart" && styles.segmentTextActive,
+        ]}
+      >
+        Analysis
+      </Text>
+    </TouchableOpacity>
+    <TouchableOpacity
+      style={[
+        styles.segmentButton,
+        selected === "table" && styles.segmentButtonActive,
+      ]}
+      onPress={() => onSelect("table")}
+    >
+      <Ionicons
+        name="list"
+        size={18}
+        color={selected === "table" ? "#4F46E5" : "#6B7280"}
+      />
+      <Text
+        style={[
+          styles.segmentText,
+          selected === "table" && styles.segmentTextActive,
+        ]}
+      >
+        Records
+      </Text>
+    </TouchableOpacity>
+  </View>
+);
+
 export default function Report() {
-  const [reportData, setReportData] = useState<ReportDataEntry[]>([]);
+  // --- State ---
+  const [reportData, setReportData] = useState<ReportData[]>([]);
   const [allMonths, setAllMonths] = useState<string[]>([]);
   const [selectedMonthTitle, setSelectedMonthTitle] =
     useState<string>("Select Month");
-  const selectedMonthTitleRef = useRef(selectedMonthTitle);
+  const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Refs
   const isMounted = useRef(true);
 
-  useEffect(() => {
-    selectedMonthTitleRef.current = selectedMonthTitle;
-  }, [selectedMonthTitle]);
-
-  // --- AsyncStorage Interaction ---
   const getAllMonthKeys = useCallback(async (): Promise<string[]> => {
     try {
       const keys = await AsyncStorage.getAllKeys();
       const monthKeys = keys
         .filter((key) => key !== "perfer" && /^[A-Za-z]{3} \d{4}$/.test(key))
-        .sort((a, b) => {
-          try {
-            const dateA = new Date(a);
-            const dateB = new Date(b);
-            if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) return 0;
-            return dateA.getTime() - dateB.getTime();
-          } catch (e) {
-            console.warn("Date sorting issue:", e);
-            return 0;
-          }
-        });
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
       return monthKeys;
-    } catch (error) {
-      console.error("Error getting keys:", error);
-      ToastAndroid.show("Failed to get stored months", ToastAndroid.SHORT);
+    } catch (_error) {
       return [];
     }
   }, []);
 
-  const checkAndClearOldData = useCallback(
-    async (monthKey: string) => {
-      const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
-      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-      const WARNING_THRESHOLD_MS = ONE_YEAR_MS - SEVEN_DAYS_MS;
-
-      try {
-        const storedData = await AsyncStorage.getItem(monthKey);
-        if (storedData) {
-          const reportDataForMonth: ReportDataEntry[] = JSON.parse(storedData);
-          if (reportDataForMonth?.length > 0 && reportDataForMonth[0]?.time) {
-            const firstReportDate = new Date(reportDataForMonth[0].time);
-            if (isNaN(firstReportDate.getTime())) {
-              console.warn(
-                `(Report.js) Invalid date format in key ${monthKey}, skipping cleanup.`
-              );
-              return;
-            }
-            const currentDate = new Date();
-            const age = currentDate.getTime() - firstReportDate.getTime();
-
-            if (age >= ONE_YEAR_MS) {
-              await AsyncStorage.removeItem(monthKey);
-              if (isMounted.current) {
-                ToastAndroid.show(
-                  `Cleared data older than 1 year for ${monthKey}.`,
-                  ToastAndroid.LONG
-                );
-                const updatedMonths = await getAllMonthKeys();
-                setAllMonths(updatedMonths);
-                if (monthKey === selectedMonthTitle) {
-                  setReportData([]);
-                  setSelectedMonthTitle("Select Month");
-                }
-              }
-            } else if (age >= WARNING_THRESHOLD_MS) {
-              if (isMounted.current) {
-                Alert.alert(
-                  "Data Expiration Warning",
-                  `The data for ${monthKey} is almost 1 year old and will be deleted soon. Please save or export it.`,
-                  [{ text: "OK" }]
-                );
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error(
-          `(Report.js) Error checking/clearing data for ${monthKey}:`,
-          error
-        );
-      }
-    },
-    [selectedMonthTitle, getAllMonthKeys]
-  );
-
   const loadReportData = useCallback(async (month: string) => {
-    // ... (implementation remains the same) ...
     if (!isMounted.current) return;
-    setSelectedMonthTitle(month);
-    setReportData([]);
+    setIsLoading(true);
+
     try {
       const storedData = await AsyncStorage.getItem(month);
-      if (!isMounted.current) return;
-
-      if (!storedData) {
-        ToastAndroid.show(`No data found for ${month}`, ToastAndroid.SHORT);
-        return;
-      }
-
-      const parsedData: ReportDataEntry[] = JSON.parse(storedData);
-      if (isMounted.current) {
+      if (isMounted.current && storedData) {
+        const parsedData = JSON.parse(storedData);
         setReportData(parsedData);
+        setSelectedMonthTitle(month);
+      } else if (isMounted.current) {
+        setReportData([]);
+        setSelectedMonthTitle(month);
       }
-    } catch (error) {
-      console.error(
-        `(Report.js) Error loading or parsing data for ${month}:`,
-        error
-      );
+    } catch (_e) {
+      console.error(_e);
+    } finally {
       if (isMounted.current) {
-        ToastAndroid.show(
-          `Error loading data for ${month}`,
-          ToastAndroid.SHORT
-        );
+        setIsLoading(false);
       }
     }
   }, []);
 
-  // --- Effect for Initial Load & Cleanup ---
+  // --- Effects ---
   useEffect(() => {
     isMounted.current = true;
-    const performCleanup = async () => {
-      const keys = await getAllMonthKeys();
-      if (!isMounted.current) return;
-      await Promise.all(keys.map((key) => checkAndClearOldData(key)));
-    };
-    performCleanup();
-
     return () => {
       isMounted.current = false;
     };
@@ -164,430 +183,511 @@ export default function Report() {
 
   useFocusEffect(
     useCallback(() => {
-      const fetchData = async () => {
+      const init = async () => {
+        setIsLoading(true);
         const keys = await getAllMonthKeys();
-        if (!isMounted.current) return;
-        setAllMonths(keys);
-
-        if (keys.length > 0) {
-          let monthToLoad = keys[keys.length - 1];
-          const currentSelection = selectedMonthTitleRef.current;
-          if (
-            currentSelection &&
-            keys.includes(currentSelection) &&
-            currentSelection !== "Select Month"
-          ) {
-            monthToLoad = currentSelection;
+        if (isMounted.current) {
+          setAllMonths(keys);
+          if (keys.length > 0) {
+            // If already on a valid month, invoke load for it, else load last
+            const target =
+              selectedMonthTitle !== "Select Month" &&
+              keys.includes(selectedMonthTitle)
+                ? selectedMonthTitle
+                : keys[keys.length - 1];
+            loadReportData(target);
+          } else {
+            setIsLoading(false);
+            setReportData([]);
+            setSelectedMonthTitle("Select Month");
           }
-          loadReportData(monthToLoad);
-        } else {
-          setSelectedMonthTitle("Select Month");
-          setReportData([]);
         }
       };
-      fetchData();
-    }, [getAllMonthKeys, loadReportData])
+      init();
+    }, [getAllMonthKeys, loadReportData, selectedMonthTitle]),
   );
 
-  // --- Data Processing & Table Generation (Memoized) ---
+  // --- Computations ---
+  const stats = useMemo(() => {
+    let total = 0;
+    const catTotals: Record<string, number> = {};
 
-  const calculateTotals = useMemo(() => {
-    let totalGross = 0;
-    let totalNet = 0;
-    reportData.forEach((item) => {
-      totalGross += parseFloat(item.totalGrossIncome) || 0;
-      totalNet += parseFloat(item.calculatedNetIncome) || 0;
+    reportData.forEach((d) => {
+      total += parseFloat(d.totalExpense) || 0;
+      d.all.forEach((item) => {
+        const cat = item.category || item.name || "other";
+        const val = parseFloat(String(item.value));
+        catTotals[cat] = (catTotals[cat] || 0) + val;
+      });
     });
+
+    const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+    const topCat = sortedCats[0];
+
     return {
-      totalGross: totalGross.toFixed(2),
-      totalNet: totalNet.toFixed(2),
+      total: total.toFixed(2),
+      topCategory: topCat ? topCat[0] : "N/A",
+      topCatValue: topCat ? topCat[1].toFixed(2) : "0",
+      categoryData: sortedCats.map(([k, v], i) => ({
+        name: k.charAt(0).toUpperCase() + k.slice(1),
+        value: v,
+        color: getColorForCategory(k, i),
+      })),
     };
   }, [reportData]);
 
-  const tableHead = useMemo(() => {
-    const staticHeaders = ["Date", "Gross Income", "Net Income"];
-    const dynamicHeaderNames = new Set<string>();
-    reportData.forEach((entry) => {
-      (entry.all || []).forEach((item) => {
-        if (item.name) dynamicHeaderNames.add(item.name);
-      });
-    });
-    const dynamicHeaders = Array.from(dynamicHeaderNames).sort();
-    return [...staticHeaders, ...dynamicHeaders];
-  }, [reportData]);
+  // --- Chart Data ---
+  const chartData = useMemo(() => {
+    const total = parseFloat(stats.total);
+    return stats.categoryData.map((d) => ({
+      value: d.value,
+      color: d.color,
+      text: total > 0 ? `${Math.round((d.value / total) * 100)}%` : "",
+      label: d.name,
+    }));
+  }, [stats]);
 
-  // Define FIXED column widths using widthArr
-  const columnWidthArr = useMemo(() => {
-    // ** ADJUST THESE WIDTHS AS NEEDED **
-    const dateWidth = 90;
-    const incomeWidth = 85;
-    const dynamicWidth = 80; // Default width for dynamic columns
-
-    const staticWidths = [dateWidth, incomeWidth, incomeWidth];
-    const dynamicCount = tableHead.length - staticWidths.length;
-    const dynamicWidths = Array(dynamicCount).fill(dynamicWidth);
-
-    return [...staticWidths, ...dynamicWidths];
-  }, [tableHead]); // Depends only on tableHead length
-
-  const tableData = useMemo(() => {
-    // ... (implementation remains the same) ...
-    return reportData.map((item) => {
-      const row: (string | number)[] = [
-        item.todaysDate,
-        (parseFloat(item.totalGrossIncome) || 0).toFixed(2),
-        (parseFloat(item.calculatedNetIncome) || 0).toFixed(2),
-      ];
-      const itemMap = new Map<string, number>();
-      (item.all || []).forEach((detail) => {
-        if (detail.name)
-          itemMap.set(detail.name, parseFloat(String(detail.value)) || 0);
-      });
-      tableHead.slice(3).forEach((header) => {
-        row.push((itemMap.get(header) ?? 0).toFixed(2));
-      });
-      return row;
-    });
-  }, [reportData, tableHead]);
-
-  const tableFoot = useMemo(() => {
-    // ... (implementation remains the same) ...
-    const staticFoot = [
-      "Total",
-      calculateTotals.totalGross,
-      calculateTotals.totalNet,
-    ];
-    const dynamicTotals: string[] = [];
-    tableHead.slice(3).forEach((header) => {
-      let columnTotal = 0;
-      reportData.forEach((item) => {
-        const foundItem = (item.all || []).find(
-          (allItem) => allItem.name === header
-        );
-        columnTotal += foundItem ? parseFloat(String(foundItem.value)) || 0 : 0;
-      });
-      dynamicTotals.push(columnTotal.toFixed(2));
-    });
-    return [...staticFoot, ...dynamicTotals];
-  }, [reportData, tableHead, calculateTotals]);
-
-  // --- HTML Generation & Printing ---
+  // --- HTML Generation (Legacy support) ---
   const generateHTML = useCallback(() => {
-    const currentMonth =
-      reportData.length > 0 ? reportData[0].month : selectedMonthTitle;
-    let html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: sans-serif; }
-          table { width: 100%; border-collapse: collapse; margin-top: 15px; } /* Removed table-layout fixed */
-          th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 10px; word-wrap: break-word; }
-          th { background-color: #e9ecef; font-weight: bold; }
-          tr:nth-child(even) { background-color: #f8f9fa; }
-          tfoot th { background-color: #dee2e6; }
-          .month-title { font-size: 16px; text-align: center; color: #333; margin-bottom: 10px; font-weight: bold; }
-          .print-header { text-align: center; margin-bottom: 20px; }
-          .print-footer { text-align: center; margin-top: 20px; font-size: 9px; color: #777; }
-        </style>
-      </head>
-      <body>
-        <div class="print-header"><h2>Ecomoney Report</h2></div>
-        <div class="month-title">Report of: ${currentMonth}</div>
-        <table>
-          <thead><tr>${tableHead
-            .map((header) => `<th>${header}</th>`)
-            .join("")}</tr></thead>
-          <tbody>${tableData
-            .map(
-              (row) =>
-                `<tr>${row
-                  .map((cell) => `<td>${cell ?? ""}</td>`)
-                  .join("")}</tr>`
-            )
-            .join("")}</tbody>
-          <tfoot><tr>${tableFoot
-            .map((footer) => `<th>${footer}</th>`)
-            .join("")}</tr></tfoot>
-        </table>
-        <div class="print-footer">Generated on: ${new Date().toLocaleString()}</div>
-      </body>
-      </html>`;
-    return html;
-  }, [tableHead, tableData, tableFoot, reportData, selectedMonthTitle]); // Removed columnWidthArr dependency
+    // Basic implementation for menu compatibility
+    return `<html><body><h1>Report for ${selectedMonthTitle}</h1></body></html>`;
+  }, [selectedMonthTitle]);
 
-  const handleMonthPress = useCallback(
-    (month: string) => {
-      loadReportData(month);
-    },
-    [loadReportData]
-  );
-  const renderMonthItem = useCallback(
-    ({ item }: { item: string }) => (
-      <TouchableOpacity
-        onPress={() => handleMonthPress(item)}
-        style={[
-          styles.monthButton,
-          item === selectedMonthTitle && styles.monthButtonSelected,
-        ]}
-      >
-        <Text
-          style={[
-            styles.monthButtonText,
-            item === selectedMonthTitle && styles.monthButtonTextSelected,
-          ]}
-        >
-          {item}
-        </Text>
-      </TouchableOpacity>
-    ),
-    [handleMonthPress, selectedMonthTitle]
+  // --- Renderers ---
+
+  const renderSkeleton = () => (
+    <View style={styles.skeletonContainer}>
+      <ActivityIndicator size="large" color="#4F46E5" />
+      <Text style={styles.skeletonText}>Analyzing expenses...</Text>
+    </View>
   );
 
-  const renderTableContent = () =>
-    reportData.length > 0 ? (
-      <ScrollView
-        showsHorizontalScrollIndicator={true}
-        horizontal={true}
-        contentContainerStyle={styles.tableOuterContainer}
-      >
-        <View>
-          <Table borderStyle={styles.tableBorder}>
-            {/* Use widthArr for column width distribution */}
-            <Row
-              data={tableHead}
-              style={styles.head}
-              textStyle={styles.headText}
-              widthArr={columnWidthArr} // Use widthArr here
-            />
-            <Rows
-              data={tableData}
-              style={styles.row}
-              textStyle={styles.rowText}
-              widthArr={columnWidthArr} // Use widthArr here
-            />
-            <Row
-              data={tableFoot}
-              style={styles.foot}
-              textStyle={styles.footText}
-              widthArr={columnWidthArr} // Use widthArr here
-            />
-          </Table>
-        </View>
-      </ScrollView>
-    ) : (
-      <View style={styles.noDataContainer}>
-        <Ionicons name="cloud-offline-outline" size={40} color="#adb5bd" />
-        <Text style={styles.noDataText}>
-          {selectedMonthTitle === "Select Month" ||
-          selectedMonthTitle === "No Data Found"
-            ? "Please select a month."
-            : `No data available for ${selectedMonthTitle}.`}
-        </Text>
-      </View>
-    );
+  const renderEmpty = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="analytics-outline" size={64} color="#D1D5DB" />
+      <Text style={styles.emptyTitle}>No Data Available</Text>
+      <Text style={styles.emptySubtitle}>
+        {allMonths.length === 0
+          ? "Start adding expenses to see analytics."
+          : `No records found for ${selectedMonthTitle}.`}
+      </Text>
+    </View>
+  );
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.headerContainer}>
-        {/* Month Selection Header */}
-        <View style={styles.monthsHeader}>
-          {allMonths.length > 0 ? (
-            <FlatList
-              horizontal={true}
-              data={allMonths}
-              renderItem={renderMonthItem}
-              keyExtractor={(item) => `month-${item}`}
-              // showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.monthsListContainer}
-            />
-          ) : (
-            <Text style={styles.noMonthsText}>No historical data found</Text>
-          )}
-        </View>
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <View style={styles.headerTop}>
+        <Text style={styles.headerTitle}>Financial Report</Text>
         <Menu
           generateHTML={generateHTML}
-          reportData={reportData}
+          reportData={reportData} // pass raw data based on interface
           selectedMonthTitle={selectedMonthTitle}
         />
       </View>
 
-      {/* Table Area */}
-      <ScrollView
-        style={styles.tableScrollView}
-        contentContainerStyle={{ flexGrow: 1 }}
-      >
-        {renderTableContent()}
+      {/* Month Selector */}
+      <FlatList
+        horizontal
+        data={allMonths}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.monthList}
+        keyExtractor={(item) => item}
+        renderItem={({ item }) => (
+          <MonthPill
+            label={item}
+            isSelected={item === selectedMonthTitle}
+            onPress={() => loadReportData(item)}
+          />
+        )}
+      />
+    </View>
+  );
+
+  const renderCharts = () => (
+    <View style={styles.chartSection}>
+      <View style={styles.chartWrapper}>
+        <GiftedPieChart
+          data={chartData}
+          donut
+          radius={110}
+          innerRadius={75}
+          showText
+          textColor="#fff"
+          // openEnded={0}
+          innerCircleColor="#fff"
+          centerLabelComponent={() => (
+            <View style={styles.donutCenter}>
+              <Text style={styles.donutTitle}>Total</Text>
+              <Text style={styles.donutAmount}>₹{stats.total}</Text>
+            </View>
+          )}
+          animationDuration={1000}
+        />
+      </View>
+
+      {/* Legend List */}
+      <View style={styles.legendContainer}>
+        {stats.categoryData.map((item, index) => (
+          <View key={index} style={styles.legendItem}>
+            <View
+              style={[styles.legendColor, { backgroundColor: item.color }]}
+            />
+            <Text style={styles.legendName}>{item.name}</Text>
+            <Text style={styles.legendValue}>₹{item.value.toFixed(2)}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
+  const renderTable = () => {
+    // Prep table data
+    const headers = ["Date", "Expense", "Items"];
+    return (
+      <View style={styles.tableContainer}>
+        <Table borderStyle={{ borderWidth: 0 }}>
+          <Row
+            data={headers}
+            style={styles.tableHeader}
+            textStyle={styles.tableHeaderText}
+            flexArr={[2, 2, 3]}
+          />
+          {reportData.map((item, i) => (
+            <Row
+              key={i}
+              data={[
+                item.todaysDate,
+                `₹${parseFloat(item.totalExpense).toFixed(2)}`,
+                item.all.length,
+              ]}
+              style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}
+              textStyle={styles.tableRowText}
+              flexArr={[2, 2, 3]}
+            />
+          ))}
+        </Table>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      {renderHeader()}
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Loading State */}
+        {isLoading ? (
+          renderSkeleton()
+        ) : reportData.length === 0 ? (
+          renderEmpty()
+        ) : (
+          <View style={{ gap: 20 }}>
+            {/* Summary Cards */}
+            <View style={styles.summaryRow}>
+              <SummaryCard
+                title="Total Spent"
+                value={`₹${stats.total}`}
+                icon="wallet-outline"
+                color="#4F46E5"
+              />
+              <SummaryCard
+                title="Top Category"
+                value={stats.topCategory}
+                icon="trending-up-outline"
+                color="#EC4899"
+              />
+            </View>
+
+            {/* View Switcher */}
+            <ViewSegmentControl selected={viewMode} onSelect={setViewMode} />
+
+            {/* Main Content */}
+            <View style={styles.contentCardContainer}>
+              <View style={styles.contentCardInner}>
+                {viewMode === "chart" ? renderCharts() : renderTable()}
+              </View>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 }
 
-// --- Styles ---
+// Helper utility for consistent colors
+function getColorForCategory(category: string, index: number): string {
+  const map: Record<string, string> = {
+    food: "#F59E0B", // Amber
+    transport: "#3B82F6", // Blue
+    shopping: "#EC4899", // Pink
+    entertainment: "#8B5CF6", // Violet
+    bills: "#10B981", // Emerald
+    health: "#EF4444", // Red
+    education: "#06B6D4", // Cyan
+    other: "#6B7280", // Gray
+  };
+  return (
+    map[category.toLowerCase()] || `hsl(${(index * 137.5) % 360}, 70%, 50%)` // Golden angle generic colors
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#F3F4F6", // Gray 100
   },
-  // Header
-  headerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  header: {
     backgroundColor: "#fff",
-    elevation: 2,
-    height: 65,
-    paddingRight: 5,
-  },
-  monthsHeader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 5,
-  },
-  monthsListContainer: {
-    paddingHorizontal: 5,
-    alignItems: "center",
-  },
-  monthButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    marginHorizontal: 5,
-    borderRadius: 16,
-    backgroundColor: "#495057",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-    minHeight: 35,
-  },
-  monthButtonSelected: {
-    backgroundColor: "#212529",
-    borderColor: "#000",
-    transform: [{ scale: 1.1 }],
-  },
-  monthButtonText: {
-    color: "#ffffff",
-    fontWeight: "500",
-    fontSize: 14,
-  },
-  monthButtonTextSelected: {
-    color: "#f1f3f5",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  noMonthsText: {
-    color: "#495057",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  // Title
-  reportTitleStyle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#343a40",
-    paddingVertical: 15,
-    backgroundColor: "#ffffff",
+    paddingTop: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#dee2e6",
+    borderBottomColor: "#E5E7EB",
   },
-  // Table Area
-  tableScrollView: {
-    // Vertical scroll for the whole section below title
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#111827",
+    letterSpacing: -0.5,
+  },
+  monthList: {
+    paddingHorizontal: 12,
+  },
+  monthPill: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 20,
+    marginHorizontal: 4,
+  },
+  monthPillSelected: {
+    backgroundColor: "#4F46E5",
+    shadowColor: "#4F46E5",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  monthPillText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4B5563",
+  },
+  monthPillTextSelected: {
+    color: "#FFFFFF",
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  // Summary
+  summaryRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  summaryCardContainer: {
     flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  tableOuterContainer: {
-    // Style for the horizontal scroll content
-    paddingBottom: 10, // Add padding at the bottom if content gets cut off
-  },
-  tableBorder: {
-    borderWidth: 1,
-    borderColor: "#dee2e6",
-  },
-  // Table Cells
-  head: {
-    // height: 45, // Height is often determined by content + textStyle margins/padding when using widthArr
-    backgroundColor: "#e9ecef",
-  },
-  headText: {
-    margin: 8, // Increased margin slightly for padding
-    textAlign: "center",
-    fontWeight: "bold",
-    fontSize: 11,
-    color: "#495057",
-  },
-  row: {
-    // minHeight: 40, // Height is often determined by content + textStyle margins/padding
-    backgroundColor: "#ffffff",
-    // Example: Alternating row background
-    // backgroundColor: index % 2 === 1 ? '#f8f9fa' : '#ffffff', // Needs index passed to style func
-  },
-  rowText: {
-    margin: 8, // Increased margin slightly for padding
-    textAlign: "center",
-    fontSize: 10,
-    color: "#212529",
-  },
-  foot: {
-    // height: 40, // Height is often determined by content + textStyle margins/padding
-    backgroundColor: "#dee2e6",
-  },
-  footText: {
-    margin: 8, // Increased margin slightly for padding
-    textAlign: "center",
-    fontWeight: "bold",
-    fontSize: 11,
-    color: "#212529",
-  },
-  // No Data Display
-  noDataContainer: {
+  summaryCardContent: {
     flex: 1,
+    padding: 16,
+    borderRadius: 16,
+    flexDirection: "column",
+    gap: 12,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+    textTransform: "uppercase",
+  },
+  summaryValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  // Segment
+  segmentContainer: {
+    flexDirection: "row",
+    backgroundColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 8,
+  },
+  segmentButtonActive: {
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  segmentTextActive: {
+    color: "#4F46E5",
+  },
+  // Main Card
+  contentCardContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    minHeight: 300,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  contentCardInner: {
+    borderRadius: 24,
     padding: 20,
-    minHeight: 200,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+    minHeight: 300,
   },
-  noDataText: {
-    fontSize: 16,
-    color: "#6c757d",
+  // Chart
+  chartSection: {
+    alignItems: "center",
+    gap: 24,
+  },
+  chartWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
+  donutCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  donutTitle: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  donutAmount: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  legendContainer: {
+    width: "100%",
+    gap: 12,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  legendName: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+    flex: 1,
+  },
+  legendValue: {
+    fontSize: 14,
+    color: "#111827",
+    fontWeight: "600",
+  },
+  // Table
+  tableContainer: {
+    overflow: "hidden",
+  },
+  tableHeader: {
+    height: 40,
+    backgroundColor: "#F9FAFB",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  tableHeaderText: {
     textAlign: "center",
-    marginTop: 10,
+    fontWeight: "600",
+    color: "#4B5563",
+    fontSize: 12,
   },
-  // Print Button
-  actionButtonsContainer: {
-    flexDirection: "row",
-    paddingVertical: 12,
+  tableRow: {
+    height: 48,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  tableRowAlt: {
+    backgroundColor: "#FAFAFA",
+  },
+  tableRowText: {
+    textAlign: "center",
+    fontSize: 13,
+    color: "#1F2937",
+  },
+  // Empty & Skeleton
+  skeletonContainer: {
+    height: 400,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 8,
-    marginHorizontal: 5,
-    // marginVertical: 10,
+    gap: 16,
   },
-  printButton: {
-    backgroundColor: "#6c757d",
-    flex: 1,
-    flexDirection: "row",
-    paddingVertical: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    marginHorizontal: 5,
-  },
-  saveButton: {
-    backgroundColor: "#212529",
-    flex: 1,
-    flexDirection: "row",
-    paddingVertical: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    marginHorizontal: 5,
-  },
-  printButtonText: {
-    color: "white",
-    fontWeight: "bold",
+  skeletonText: {
+    color: "#6B7280",
     fontSize: 16,
+    fontWeight: "500",
   },
-  printButtonDisabledText: {
-    color: "#adb5bd",
+  emptyContainer: {
+    height: 400,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    maxWidth: 250,
   },
 });

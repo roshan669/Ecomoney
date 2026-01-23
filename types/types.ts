@@ -1,8 +1,6 @@
 export interface ReportData {
-    // Same interface as before
     todaysDate: string;
-    totalGrossIncome: string;
-    calculatedNetIncome: string;
+    totalExpense: string;
     month: string;
     all: list[];
     time: string;
@@ -10,13 +8,25 @@ export interface ReportData {
 
 export interface input {
     name: string;
-    toggle: string;
+    category: string;
+    value?: number;
 }
 
 export type list = {
     name: string;
     value: number;
+    category: string;
 };
+
+export type ExpenseCategory =
+    | 'food'
+    | 'transport'
+    | 'shopping'
+    | 'entertainment'
+    | 'bills'
+    | 'health'
+    | 'education'
+    | 'other';
 
 export interface ReportItem {
     name: string;

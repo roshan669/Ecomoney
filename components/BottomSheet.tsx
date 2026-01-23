@@ -5,13 +5,37 @@ import {
   BottomSheetModal,
   BottomSheetTextInput,
   BottomSheetView,
+  BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import { styles } from "@/styles/homeScreenStyles";
 import { HomeContext } from "@/hooks/useHome";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
+import type { ExpenseCategory } from "@/types/types";
+
+const expenseCategories: { key: ExpenseCategory; label: string; icon: any }[] =
+  [
+    { key: "food", label: "Food", icon: "restaurant-outline" },
+    { key: "transport", label: "Transport", icon: "car-outline" },
+    { key: "shopping", label: "Shopping", icon: "cart-outline" },
+    {
+      key: "entertainment",
+      label: "Entertainment",
+      icon: "game-controller-outline",
+    },
+    { key: "bills", label: "Bills", icon: "receipt-outline" },
+    { key: "health", label: "Health", icon: "medical-outline" },
+    { key: "education", label: "Education", icon: "school-outline" },
+    {
+      key: "other",
+      label: "Other",
+      icon: "ellipsis-horizontal-circle-outline",
+    },
+  ];
 
 export default function BottomSheet() {
+  const amountInputRef = React.useRef<any>(null);
+
   useFocusEffect(
     React.useCallback(() => {
       const onBackPress = () => {
@@ -21,11 +45,11 @@ export default function BottomSheet() {
 
       const subscription = BackHandler.addEventListener(
         "hardwareBackPress",
-        onBackPress
+        onBackPress,
       );
 
       return () => subscription.remove();
-    }, [])
+    }, []),
   );
   const handleSheetChanges = React.useCallback((index: number) => {
     console.log("handleSheetChanges", index);
@@ -35,6 +59,8 @@ export default function BottomSheet() {
     bottomSheetModalRef,
     addName,
     setAddName,
+    addAmount,
+    setAddAmount,
     setPerfer,
     perfer,
     handleAdd,
@@ -50,11 +76,14 @@ export default function BottomSheet() {
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.3}
+        opacity={0.8}
+        enableTouchThrough={false}
+        pressBehavior="close"
       />
     ),
-    []
+    [],
   );
+
   return (
     <BottomSheetModal
       ref={bottomSheetModalRef}
@@ -62,105 +91,120 @@ export default function BottomSheet() {
       backdropComponent={renderBackdrop}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      enablePanDownToClose={true}
+      snapPoints={["75%"]}
+      animateOnMount={true}
+      enableDismissOnClose={true}
     >
-      <BottomSheetView style={styles.modalContentContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Add New Item</Text>
-        </View>
+      <BottomSheetScrollView
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <BottomSheetView style={styles.modalContentContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add Expense</Text>
+          </View>
 
-        <View style={styles.modalInputContainer}>
-          <Text style={styles.inputLabel}>Item Name</Text>
-          <BottomSheetTextInput
-            placeholder="e.g., Groceries, Salary"
-            value={addName}
-            onChangeText={setAddName}
-            style={styles.modalInput}
-            autoCapitalize="words"
-            placeholderTextColor="#adb5bd"
-          />
-        </View>
+          <View style={styles.modalInputContainer}>
+            <Text style={styles.inputLabel}>Expense Name</Text>
+            <BottomSheetTextInput
+              placeholder="e.g., Groceries, Taxi, Dinner"
+              value={addName}
+              onChangeText={setAddName}
+              style={styles.modalInput}
+              autoCapitalize="words"
+              placeholderTextColor="#adb5bd"
+              returnKeyType="next"
+              onSubmitEditing={() => amountInputRef.current?.focus()}
+            />
+          </View>
 
-        <View style={styles.typeSelectionContainer}>
-          <Text style={styles.inputLabel}>Type</Text>
-          <View style={styles.typeButtonsRow}>
-            <TouchableOpacity
-              onPress={() => setPerfer("expense")}
-              style={[
-                styles.typeButton,
-                styles.expenseTypeButton,
-                perfer === "expense" && styles.expenseTypeButtonSelected,
-              ]}
-              activeOpacity={0.7}
+          <View style={styles.modalInputContainer}>
+            <Text style={styles.inputLabel}>Amount</Text>
+            <BottomSheetTextInput
+              ref={amountInputRef}
+              placeholder="₹0"
+              value={addAmount}
+              onChangeText={(text) => {
+                const numeric = text.replace(/[^0-9]/g, "");
+                setAddAmount(numeric);
+              }}
+              style={styles.modalInput}
+              keyboardType="numeric"
+              placeholderTextColor="#adb5bd"
+              returnKeyType="done"
+            />
+          </View>
+
+          <View style={styles.typeSelectionContainer}>
+            <Text style={styles.inputLabel}>Category</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 12,
+                marginTop: 8,
+              }}
             >
-              <Ionicons
-                name={
-                  perfer === "expense"
-                    ? "arrow-down-circle"
-                    : "arrow-down-circle-outline"
-                }
-                size={24}
-                color={perfer === "expense" ? "#d32f2f" : "#e57373"}
-              />
-              <Text
-                style={[
-                  styles.typeButtonText,
-                  perfer === "expense" && styles.typeButtonTextSelected,
-                ]}
-              >
-                Expense
-              </Text>
+              {expenseCategories.map((category) => (
+                <TouchableOpacity
+                  key={category.key}
+                  onPress={() => setPerfer(category.key)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor:
+                      perfer === category.key ? "#6366f1" : "#f3f4f6",
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    minWidth: "30%",
+                    gap: 8,
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={category.icon}
+                    size={20}
+                    color={perfer === category.key ? "#fff" : "#6b7280"}
+                  />
+                  <Text
+                    style={{
+                      color: perfer === category.key ? "#fff" : "#374151",
+                      fontSize: 14,
+                      fontWeight: perfer === category.key ? "600" : "500",
+                    }}
+                  >
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.cancelButton]}
+              onPress={() => {
+                handleSheetClose();
+                setAddName("");
+                setAddAmount("");
+                setPerfer("");
+              }}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setPerfer("income")}
-              style={[
-                styles.typeButton,
-                styles.incomeTypeButton,
-                perfer === "income" && styles.incomeTypeButtonSelected,
-              ]}
-              activeOpacity={0.7}
+              style={[styles.actionButton, styles.confirmButton]}
+              onPress={handleAdd}
             >
-              <Ionicons
-                name={
-                  perfer === "income"
-                    ? "arrow-up-circle"
-                    : "arrow-up-circle-outline"
-                }
-                size={24}
-                color={perfer === "income" ? "#388e3c" : "#81c784"}
-              />
-              <Text
-                style={[
-                  styles.typeButtonText,
-                  perfer === "income" && styles.typeButtonTextSelected,
-                ]}
-              >
-                Income
-              </Text>
+              <Text style={styles.confirmButtonText}>Add Expense</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.modalFooter}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.cancelButton]}
-            onPress={() => {
-              handleSheetClose();
-              setAddName("");
-              setPerfer("");
-            }}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.confirmButton]}
-            onPress={handleAdd}
-          >
-            <Text style={styles.confirmButtonText}>Add Item</Text>
-          </TouchableOpacity>
-        </View>
-      </BottomSheetView>
+        </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheetModal>
   );
 }
