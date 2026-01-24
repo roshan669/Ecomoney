@@ -99,9 +99,7 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#212529",
   },
-  modalInputContainer: {
-    marginBottom: 24,
-  },
+  modalInputContainer: {},
   inputLabel: {
     fontSize: 14,
     fontWeight: "600",
@@ -182,7 +180,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "#f1f3f5",
   },
   confirmButton: {
-    backgroundColor: "#212529",
+    backgroundColor: "#4F46E5",
   },
   cancelButtonText: {
     fontSize: 16,

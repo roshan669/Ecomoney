@@ -7,12 +7,14 @@ export interface ReportData {
 }
 
 export interface input {
+    id?: string;
     name: string;
     category: string;
     value?: number;
 }
 
 export type list = {
+    id?: string;
     name: string;
     value: number;
     category: string;

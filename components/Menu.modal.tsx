@@ -7,13 +7,15 @@ import {
   Platform,
   Modal,
   Pressable,
+  Switch,
 } from "react-native";
-import React from "react";
+import React, { useContext, useState } from "react";
 import * as Print from "expo-print";
 import { Ionicons } from "@expo/vector-icons";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
-import { ReportDataEntry } from "@/types/types";
+import { HomeContext } from "@/hooks/useHome";
+import { currencies } from "@/constants/categories";
 
 interface menuProps {
   reportData: any[];
@@ -26,7 +28,10 @@ export default function Menu({
   generateHTML,
   selectedMonthTitle,
 }: menuProps) {
-  const [showMenu, setShowMenu] = React.useState<boolean>(false);
+  const [showMenu, setShowMenu] = useState<boolean>(false);
+  const [showCurrencyMenu, setShowCurrencyMenu] = useState<boolean>(false);
+  const { currencySymbol, setCurrencySymbol, theme, toggleTheme, themeColors } =
+    useContext(HomeContext);
 
   const printReport = async () => {
     setShowMenu(false);
@@ -118,7 +123,7 @@ export default function Menu({
       style={{
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#fff",
+        // backgroundColor: "#fff", // Removed hardcoded background
       }}
     >
       <TouchableOpacity
@@ -127,59 +132,210 @@ export default function Menu({
         }}
         // style={{ padding: 10 }}
       >
-        <Ionicons name="ellipsis-vertical" size={24} color="black" />
+        <Ionicons name="ellipsis-vertical" size={24} color={themeColors.text} />
       </TouchableOpacity>
       <Modal
         visible={showMenu}
-        onRequestClose={() => setShowMenu(false)}
+        onRequestClose={() => {
+          setShowMenu(false);
+          setShowCurrencyMenu(false);
+        }}
         transparent
         animationType="fade"
       >
-        <Pressable style={styles.overlay} onPress={() => setShowMenu(false)}>
-          <View style={styles.actionButtonsContainer}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={printReport}
-              disabled={reportData.length === 0}
-            >
-              <Ionicons
-                name="share-social"
-                size={20}
-                color={reportData.length === 0 ? "#ccc" : "#333"}
-                style={{ marginRight: 12 }}
-              />
-              <Text
-                style={[
-                  styles.menuItemText,
-                  reportData.length === 0 && styles.disabledText,
-                ]}
-              >
-                Share Report
-              </Text>
-            </TouchableOpacity>
+        <Pressable
+          style={styles.overlay}
+          onPress={() => {
+            setShowMenu(false);
+            setShowCurrencyMenu(false);
+          }}
+        >
+          <View
+            style={[
+              styles.actionButtonsContainer,
+              { backgroundColor: themeColors.card },
+            ]}
+          >
+            {!showCurrencyMenu ? (
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={printReport}
+                  disabled={reportData.length === 0}
+                >
+                  <Ionicons
+                    name="share-social"
+                    size={20}
+                    color={
+                      reportData.length === 0
+                        ? themeColors.seconday
+                        : themeColors.text
+                    }
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text
+                    style={[
+                      styles.menuItemText,
+                      { color: themeColors.text },
+                      reportData.length === 0 && styles.disabledText,
+                    ]}
+                  >
+                    Share Report
+                  </Text>
+                </TouchableOpacity>
 
-            <View style={styles.divider} />
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: themeColors.border },
+                  ]}
+                />
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={saveReportToDocuments}
-              disabled={reportData.length === 0}
-            >
-              <Ionicons
-                name="save"
-                size={20}
-                color={reportData.length === 0 ? "#ccc" : "#333"}
-                style={{ marginRight: 12 }}
-              />
-              <Text
-                style={[
-                  styles.menuItemText,
-                  reportData.length === 0 && styles.disabledText,
-                ]}
-              >
-                Save To File
-              </Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={saveReportToDocuments}
+                  disabled={reportData.length === 0}
+                >
+                  <Ionicons
+                    name="save"
+                    size={20}
+                    color={
+                      reportData.length === 0
+                        ? themeColors.seconday
+                        : themeColors.text
+                    }
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text
+                    style={[
+                      styles.menuItemText,
+                      { color: themeColors.text },
+                      reportData.length === 0 && styles.disabledText,
+                    ]}
+                  >
+                    Save To File
+                  </Text>
+                </TouchableOpacity>
+
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: themeColors.border },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => setShowCurrencyMenu(true)}
+                >
+                  <Ionicons
+                    name="cash-outline"
+                    size={20}
+                    color={themeColors.text}
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text
+                    style={[styles.menuItemText, { color: themeColors.text }]}
+                  >
+                    Change Currency
+                  </Text>
+                </TouchableOpacity>
+
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: themeColors.border },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  activeOpacity={1}
+                  onPress={toggleTheme}
+                >
+                  <Ionicons
+                    name={theme === "dark" ? "moon" : "sunny-outline"}
+                    size={20}
+                    color={themeColors.text}
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text
+                    style={[
+                      styles.menuItemText,
+                      { flex: 1, color: themeColors.text },
+                    ]}
+                  >
+                    Dark Mode
+                  </Text>
+                  <Switch
+                    value={theme === "dark"}
+                    onValueChange={toggleTheme}
+                    thumbColor={theme === "dark" ? "#f4f3f4" : "#f4f3f4"}
+                    trackColor={{ false: "#767577", true: "#81b0ff" }}
+                  />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.menuItem,
+                    { backgroundColor: themeColors.border },
+                  ]}
+                  onPress={() => setShowCurrencyMenu(false)}
+                >
+                  <Ionicons
+                    name="arrow-back"
+                    size={20}
+                    color={themeColors.text}
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text
+                    style={[styles.menuItemText, { color: themeColors.text }]}
+                  >
+                    Back
+                  </Text>
+                </TouchableOpacity>
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: themeColors.border },
+                  ]}
+                />
+                {currencies.map((curr) => (
+                  <TouchableOpacity
+                    key={curr}
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setCurrencySymbol(curr);
+                      setShowCurrencyMenu(false);
+                      setShowMenu(false);
+                      ToastAndroid.show(
+                        `Currency changed to ${curr}`,
+                        ToastAndroid.SHORT,
+                      );
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.menuItemText,
+                        {
+                          fontWeight:
+                            curr === currencySymbol ? "bold" : "normal",
+                          flex: 1,
+                          color: themeColors.text,
+                        },
+                      ]}
+                    >
+                      {curr}
+                    </Text>
+                    {curr === currencySymbol && (
+                      <Ionicons name="checkmark" size={18} color="#4F46E5" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
           </View>
         </Pressable>
       </Modal>
@@ -193,16 +349,16 @@ const styles = StyleSheet.create({
   },
   actionButtonsContainer: {
     position: "absolute",
-    top: 55,
-    right: 10,
-    backgroundColor: "#fff",
+    top: 90,
+    right: 15,
+    backgroundColor: "#fff", // Fallback, overridden by style prop
     borderRadius: 8,
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-    minWidth: 180,
+    minWidth: 200,
     paddingVertical: 5,
   },
   menuItem: {

@@ -1,13 +1,5 @@
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  ToastAndroid,
-  StyleSheet,
-} from "react-native";
-import React, { SetStateAction, useContext } from "react";
-import { ReportData } from "@/types/types";
+import { View, Text, Modal, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useContext } from "react";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { HomeContext } from "@/hooks/useHome";
@@ -25,6 +17,8 @@ export default function Alert({ title, description }: AlertProps) {
     setAgree,
     setDataToUpdate,
     showWarning,
+    themeColors,
+    theme,
   } = useContext(HomeContext);
   return (
     <Modal
@@ -40,43 +34,65 @@ export default function Alert({ title, description }: AlertProps) {
     >
       <BlurView
         style={styles.modalcontainer}
-        intensity={100}
-        tint="systemChromeMaterialDark"
+        intensity={theme === "dark" ? 50 : 100}
+        tint={
+          theme === "dark"
+            ? "systemChromeMaterialDark"
+            : "systemChromeMaterialLight"
+        }
       >
-        <View style={styles.warningContent}>
+        <View
+          style={[styles.warningContent, { backgroundColor: themeColors.card }]}
+        >
           <Ionicons
             name="warning-outline"
             size={40}
-            color="#f57c00"
+            color={themeColors.danger}
             style={{ marginBottom: 10 }}
           />
-          <Text style={styles.warningText}>{title}</Text>
-          <Text style={styles.warningSubText}>
+          <Text style={[styles.warningText, { color: themeColors.text }]}>
+            {title}
+          </Text>
+          <Text style={[styles.warningSubText, { color: themeColors.subText }]}>
             {description}
-            {showWarning === "delete" && itemToDelete
-              ? `"${itemToDelete}"?`
+            {(showWarning === "delete" ||
+              showWarning === "delete_transaction") &&
+            itemToDelete
+              ? ` "${itemToDelete}"?`
               : ""}
           </Text>
           <View style={styles.warningButtons}>
             <TouchableOpacity
-              style={styles.warningNoButton} // "No" on the left
+              style={[
+                styles.warningNoButton,
+                { backgroundColor: themeColors.border },
+              ]} // "No" on the left
               onPress={() => {
                 setShowWarning(null);
                 setAgree(false); // Explicitly set agree to false
                 setDataToUpdate!(null); // Clear pending data
-                ToastAndroid.show("Operation cancelled", ToastAndroid.SHORT);
+                // ToastAndroid.show("Operation cancelled", ToastAndroid.SHORT);
               }}
             >
-              <Text style={styles.warningButtonText}>No</Text>
+              <Text
+                style={[styles.warningButtonText, { color: themeColors.text }]}
+              >
+                No
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.warningYesButton} // "Yes" on the right
+              style={[
+                styles.warningYesButton,
+                { backgroundColor: themeColors.danger },
+              ]} // "Yes" on the right
               onPress={() => {
                 // Just set agree and close. The useEffect will handle the update.
                 setAgree(true);
               }}
             >
-              <Text style={styles.warningButtonText}>Yes</Text>
+              <Text style={[styles.warningButtonText, { color: "#fff" }]}>
+                Yes
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -92,7 +108,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   warningContent: {
-    backgroundColor: "#ffffff",
     padding: 30, // More padding
     borderRadius: 15,
     alignItems: "center",
@@ -107,13 +122,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     textAlign: "center",
-    color: "#343a40",
     marginBottom: 5, // Less space before subtext
   },
   warningSubText: {
     fontSize: 16,
     textAlign: "center",
-    color: "#6c757d", // Gray subtext
     marginBottom: 25, // More space before buttons
   },
   warningButtons: {
@@ -122,21 +135,18 @@ const styles = StyleSheet.create({
     width: "100%", // Use full width
   },
   warningYesButton: {
-    backgroundColor: Colors.dark.seconday, // Green
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 8,
     elevation: 2,
   },
   warningNoButton: {
-    backgroundColor: Colors.dark.primary, // Red
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 8,
     elevation: 2,
   },
   warningButtonText: {
-    color: "white",
     fontWeight: "bold",
     fontSize: 16,
   },

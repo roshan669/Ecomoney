@@ -1,25 +1,53 @@
-import { HomeProvider } from "@/hooks/useHome";
+import { HomeContext, HomeProvider } from "@/hooks/useHome";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { Stack, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { View } from "react-native";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
-import { Colors } from "@/constants/theme";
+import AnimatedSplashScreen from "@/components/AnimatedSplashScreen";
+import * as SplashScreen from "expo-splash-screen";
+
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* reloading the app might trigger some race conditions, ignore them */
+});
 
 function Layout() {
+  const [isSplashFinished, setIsSplashFinished] = useState(false);
+  const { theme, themeColors } = useContext(HomeContext);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: themeColors.background }}>
+      <StatusBar
+        style={theme === "dark" ? "light" : "dark"}
+        backgroundColor={themeColors.background}
+        translucent={false}
+      />
+      <SafeAreaView
+        edges={["bottom", "top"]}
+        style={{ flex: 1, backgroundColor: themeColors.background }}
+      >
+        <NavHandler />
+      </SafeAreaView>
+      {!isSplashFinished && (
+        <AnimatedSplashScreen onFinish={() => setIsSplashFinished(true)} />
+      )}
+    </View>
+  );
+}
+
+const NavHandler = () => {
   const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem("hasLaunched").then((value) => {
       if (value === null) {
         router.replace("/onboarding");
       }
-      setIsReady(true);
     });
   }, []);
 
@@ -29,24 +57,14 @@ function Layout() {
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
     </Stack>
   );
-}
+};
 
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <BottomSheetModalProvider>
         <HomeProvider>
-          <StatusBar
-            style="light"
-            backgroundColor="#6366f1"
-            translucent={false}
-          />
-          <SafeAreaView
-            edges={["bottom", "top"]}
-            style={{ flex: 1, backgroundColor: "#f5f7fa" }}
-          >
-            <Layout />
-          </SafeAreaView>
+          <Layout />
         </HomeProvider>
       </BottomSheetModalProvider>
     </GestureHandlerRootView>

@@ -11,13 +11,11 @@ import {
   Platform,
   ScrollView,
   Text,
-  TextInput,
   ToastAndroid,
   TouchableOpacity,
   View,
   StyleSheet,
   StatusBar,
-  Dimensions,
   Animated,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,46 +24,21 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { list, ReportData } from "@/types/types";
 import { HomeContext } from "@/hooks/useHome";
 import BottomSheet from "@/components/BottomSheet";
-
-// --- Types & Constants ---
-const { width } = Dimensions.get("window");
-
-// --- Helper: Category Colors ---
-const getCategoryColor = (category: string) => {
-  const map: Record<string, string> = {
-    food: "#F59E0B", // Amber
-    transport: "#3B82F6", // Blue
-    shopping: "#EC4899", // Pink
-    entertainment: "#8B5CF6", // Violet
-    bills: "#10B981", // Emerald
-    health: "#EF4444", // Red
-    education: "#06B6D4", // Cyan
-    other: "#6B7280", // Gray
-  };
-  return map[category?.toLowerCase()] || "#6B7280";
-};
-
-const getCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
-  const map: Record<string, keyof typeof Ionicons.glyphMap> = {
-    food: "fast-food-outline",
-    transport: "car-outline",
-    shopping: "bag-handle-outline",
-    entertainment: "game-controller-outline",
-    bills: "receipt-outline",
-    health: "fitness-outline",
-    education: "school-outline",
-    other: "grid-outline",
-  };
-  return map[category?.toLowerCase()] || "grid-outline";
-};
+import Alert from "@/components/Alert.modal";
+import { getCategoryColor, getCategoryIcon } from "@/constants/categories";
 
 // --- Component: Expense Item Row ---
+
 const ExpenseRow = ({
   item,
   onDelete,
+  currencySymbol,
+  themeColors,
 }: {
   item: list;
   onDelete: () => void;
+  currencySymbol: string;
+  themeColors: any;
 }) => {
   const color = getCategoryColor(item.category);
   const icon = getCategoryIcon(item.category);
@@ -79,16 +52,31 @@ const ExpenseRow = ({
 
       {/* Name */}
       <View style={styles.expenseInfo}>
-        <Text style={styles.expenseName} numberOfLines={1}>
+        <Text
+          style={[styles.expenseName, { color: themeColors.text }]}
+          numberOfLines={1}
+        >
           {item.name}
         </Text>
-        <Text style={styles.expenseCategory}>{item.category || "General"}</Text>
+        <Text style={[styles.expenseCategory, { color: themeColors.subText }]}>
+          {item.category || "General"}
+        </Text>
       </View>
 
       {/* Value Display (Read Only) */}
-      <View style={styles.amountBadge}>
-        <Text style={styles.currencyPrefix}>₹</Text>
-        <Text style={styles.amountText}>
+      <View
+        style={[
+          styles.amountBadge,
+          {
+            backgroundColor: themeColors.card,
+            borderColor: themeColors.border,
+          },
+        ]}
+      >
+        <Text style={[styles.currencyPrefix, { color: themeColors.subText }]}>
+          {currencySymbol}
+        </Text>
+        <Text style={[styles.amountText, { color: themeColors.text }]}>
           {item.value?.toLocaleString() || "0"}
         </Text>
       </View>
@@ -106,10 +94,26 @@ const ExpenseRow = ({
 };
 
 export default function Index() {
-  const { expList, setExpList, setAllInputs, bottomSheetModalRef, inputRefs } =
-    useContext(HomeContext)!;
+  const currentDate = new Date();
+
+  const {
+    expList,
+    setExpList,
+    setAllInputs,
+    bottomSheetModalRef,
+    inputRefs,
+    setShowWarning,
+    setAgree,
+    setItemToDelete,
+    agree,
+    showWarning,
+    currencySymbol,
+    themeColors,
+    theme,
+  } = useContext(HomeContext)!;
 
   const [todaysExpenses, setTodaysExpenses] = useState<list[]>([]);
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<list | null>(null);
 
   // Animation for list entry
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -119,7 +123,7 @@ export default function Index() {
   useEffect(() => {
     const checkDailyReset = async () => {
       try {
-        const today = new Date().toDateString();
+        const today = currentDate.toDateString();
         const lastResetDate = await AsyncStorage.getItem("LAST_RESET_DATE");
 
         if (lastResetDate !== today) {
@@ -157,7 +161,7 @@ export default function Index() {
     (bottomSheetModalRef as any).current?.present();
   }, [bottomSheetModalRef, inputRefs]);
 
-  const todaysDate = new Date().toDateString().slice(4);
+  const todaysDate = currentDate.toDateString().slice(4);
 
   // --- Logic: Save Expenses ---
   const saveTodayExpenses = useCallback(
@@ -175,6 +179,10 @@ export default function Index() {
           if (idx !== -1) {
             existingData.splice(idx, 1);
             await AsyncStorage.setItem(month, JSON.stringify(existingData));
+            await AsyncStorage.setItem(
+              "LAST_DATA_UPDATE",
+              Date.now().toString(),
+            );
           }
           setTodaysExpenses([]);
           return true;
@@ -190,6 +198,7 @@ export default function Index() {
           month,
           time: new Date().toISOString(),
           all: list.map((item) => ({
+            id: item.id,
             name: item.name,
             value: item.value || 0,
             category: item.category || "other",
@@ -202,6 +211,7 @@ export default function Index() {
           existingData.push(payload);
         }
         await AsyncStorage.setItem(month, JSON.stringify(existingData));
+        await AsyncStorage.setItem("LAST_DATA_UPDATE", Date.now().toString());
         setTodaysExpenses(list);
         return true;
       } catch (error) {
@@ -224,15 +234,31 @@ export default function Index() {
   }, [expList, saveTodayExpenses]);
 
   // --- Logic: Handlers ---
-  const handleDeleteExpense = useCallback(
-    async (name: string) => {
-      const updatedExpList = expList.filter((item) => item.name !== name);
+  const executeDelete = useCallback(
+    async (itemToDelete: list) => {
+      let updatedExpList;
+      if (itemToDelete.id) {
+        updatedExpList = expList.filter((item) => item.id !== itemToDelete.id);
+      } else {
+        updatedExpList = expList.filter(
+          (item) => item.name !== itemToDelete.name,
+        );
+      }
       setExpList(updatedExpList);
 
       try {
         const storedPref = await AsyncStorage.getItem("perfer");
         const boxData = storedPref ? JSON.parse(storedPref) : [];
-        const newPref = boxData.filter((item: any) => item.name !== name);
+
+        let newPref;
+        if (itemToDelete.id) {
+          newPref = boxData.filter((item: any) => item.id !== itemToDelete.id);
+        } else {
+          newPref = boxData.filter(
+            (item: any) => item.name !== itemToDelete.name,
+          );
+        }
+
         await AsyncStorage.setItem("perfer", JSON.stringify(newPref));
         setAllInputs(newPref);
       } catch (error) {
@@ -245,32 +271,71 @@ export default function Index() {
     [expList, saveTodayExpenses, setAllInputs, setExpList],
   );
 
+  const handleDeleteExpense = useCallback(
+    (item: list) => {
+      setPendingDeleteItem(item);
+      setItemToDelete(item.name); // For display in Alert
+      setShowWarning("delete_transaction");
+    },
+    [setItemToDelete, setShowWarning],
+  );
+
+  // Effect to handle confirmation
+  useEffect(() => {
+    if (agree && showWarning === "delete_transaction" && pendingDeleteItem) {
+      executeDelete(pendingDeleteItem);
+      setAgree(false);
+      setShowWarning(null);
+      setPendingDeleteItem(null);
+    }
+  }, [
+    agree,
+    showWarning,
+    pendingDeleteItem,
+    executeDelete,
+    setAgree,
+    setShowWarning,
+  ]);
+
   const totalToday = useMemo(() => {
     // Only count items in the active list
     return expList.reduce((sum, item) => sum + (item.value || 0), 0);
   }, [expList]);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F3F4F6" />
+    <View
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+    >
+      <StatusBar
+        barStyle={theme === "dark" ? "light-content" : "dark-content"}
+        backgroundColor={themeColors.background}
+      />
 
       {/* Header Summary Card */}
-      <View style={styles.headerWrapper}>
+      <View
+        style={[
+          styles.headerWrapper,
+          { backgroundColor: themeColors.background },
+        ]}
+      >
         <View style={styles.summaryCardContainer}>
           <LinearGradient
-            colors={["#4F46E5", "#4338CA"]}
+            colors={["#1207a9", "#4d44af"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.summaryGradient}
           >
             <View>
-              <Text style={styles.summaryLabel}>Total Today</Text>
-              <Text style={styles.summaryValue}>₹{totalToday.toFixed(2)}</Text>
+              <Text style={styles.summaryLabel}>Total Expense Today</Text>
+              <Text style={styles.summaryValue}>
+                {currencySymbol}
+                {totalToday.toFixed(2)}
+              </Text>
             </View>
             <View style={styles.dateBadge}>
               <Ionicons name="calendar" size={12} color="#4F46E5" />
               <Text style={styles.dateText}>
-                {new Date().toLocaleDateString("en-US", {
+                {currentDate.toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                 })}
@@ -296,16 +361,30 @@ export default function Index() {
                 transform: [{ translateY: slideAnim }],
               }}
             >
-              <Text style={styles.sectionTitle}>Today's Transactions</Text>
-              <View style={styles.listContainer}>
+              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+                Today&rsquo;s Transactions
+              </Text>
+              <View
+                style={[
+                  styles.listContainer,
+                  { backgroundColor: themeColors.card },
+                ]}
+              >
                 {expList.map((item, index) => (
                   <View key={index}>
                     <ExpenseRow
                       item={item}
-                      onDelete={() => handleDeleteExpense(item.name)}
+                      onDelete={() => handleDeleteExpense(item)}
+                      currencySymbol={currencySymbol}
+                      themeColors={themeColors}
                     />
                     {index < expList.length - 1 && (
-                      <View style={styles.separator} />
+                      <View
+                        style={[
+                          styles.separator,
+                          { backgroundColor: themeColors.border },
+                        ]}
+                      />
                     )}
                   </View>
                 ))}
@@ -340,6 +419,10 @@ export default function Index() {
       </TouchableOpacity>
 
       <BottomSheet />
+      <Alert
+        title="Delete Transaction?"
+        description="Are you sure you want to delete"
+      />
     </View>
   );
 }

@@ -7,11 +7,16 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useEffect,
 } from "react";
-import { ToastAndroid } from "react-native";
+import { ToastAndroid, Appearance } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
+import { Colors } from "@/constants/theme";
 
 interface HomeContextType {
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+  themeColors: typeof Colors.light;
   netIncome: string;
   setNetIncome: (value: string) => void;
   totalGrossIncome: string;
@@ -39,9 +44,16 @@ interface HomeContextType {
   bottomSheetModalRef: React.Ref<any>;
   handleAdd: () => void;
   inputRefs: React.RefObject<(TextInput | null)[]>;
+  currencySymbol: string;
+  setCurrencySymbol: (value: string) => void;
 }
 
 const HomeContext = createContext<HomeContextType>({
+  theme: "light",
+  toggleTheme: () => {
+    console.log("wrap the layot with useHome provider");
+  },
+  themeColors: Colors.light,
   netIncome: "0",
   setNetIncome: () => {
     console.log("wrap the layot with useHome provider");
@@ -95,9 +107,16 @@ const HomeContext = createContext<HomeContextType>({
     console.log("wrap the layot with useHome provider");
   },
   inputRefs: { current: [] },
+  currencySymbol: "$",
+  setCurrencySymbol: () => {
+    console.log("wrap the layot with useHome provider");
+  },
 });
 
 const HomeProvider = ({ children }: { children: React.ReactNode }) => {
+  const [theme, setTheme] = useState<"light" | "dark">(
+    Appearance.getColorScheme() === "dark" ? "dark" : "light",
+  );
   const [netIncome, setNetIncome] = useState<string>("0");
   const [totalGrossIncome, setTotalGrossIncome] = useState<string>("0");
   const [expList, setExpList] = useState<list[]>([]);
@@ -110,6 +129,50 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   const [agree, setAgree] = useState<boolean>(false);
   const [dataToUpdate, setDataToUpdate] = useState<ReportData | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string>("");
+  const [currencySymbol, setCurrencySymbolState] = useState<string>("$");
+
+  const toggleTheme = useCallback(async () => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    await AsyncStorage.setItem("userTheme", newTheme);
+  }, [theme]);
+
+  useEffect(() => {
+    const loadTheme = async () => {
+      try {
+        const storedTheme = await AsyncStorage.getItem("userTheme");
+        if (storedTheme === "light" || storedTheme === "dark") {
+          setTheme(storedTheme);
+        }
+      } catch (e) {
+        console.error("Failed to load theme preference", e);
+      }
+    };
+    loadTheme();
+  }, []);
+
+  const setCurrencySymbol = useCallback(async (symbol: string) => {
+    setCurrencySymbolState(symbol);
+    await AsyncStorage.setItem("currencySymbol", symbol);
+  }, []);
+
+  const loadCurrency = useCallback(async () => {
+    try {
+      const storedSymbol = await AsyncStorage.getItem("currencySymbol");
+      if (storedSymbol) {
+        setCurrencySymbolState(storedSymbol);
+      } else {
+        // Default
+        setCurrencySymbolState("$");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadCurrency();
+  }, []);
 
   const bottomSheetModalRef = React.useRef<BottomSheetModal>(null);
   const inputRefs = useRef<(TextInput | null)[]>([]);
@@ -118,6 +181,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       const storedData = await AsyncStorage.getItem("perfer");
       const rawData: any[] = storedData ? JSON.parse(storedData) : [];
       const normalized: input[] = rawData.map((item) => ({
+        id: item.id,
         name: item.name,
         category: item.category || item.toggle || "other",
         value: typeof item.value === "number" ? item.value : 0,
@@ -130,20 +194,30 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const handleDelete = useCallback(
-    async (name: string) => {
+    async (identifier: string) => {
       try {
         const storedData = await AsyncStorage.getItem("perfer");
-        let existingData: input[] = storedData ? JSON.parse(storedData) : [];
+        const existingData: input[] = storedData ? JSON.parse(storedData) : [];
 
-        const updatedData = existingData.filter((item) => item.name !== name);
+        // Try deleting by ID first
+        let updatedData = existingData.filter((item) => item.id !== identifier);
+
+        // If nothing changed, try deleting by name (legacy support)
+        if (updatedData.length === existingData.length) {
+          updatedData = existingData.filter((item) => item.name !== identifier);
+        }
 
         // Only update if the data actually changed
         if (updatedData.length !== existingData.length) {
           await AsyncStorage.setItem("perfer", JSON.stringify(updatedData));
           loadPreferences(); // Reload preferences
-          ToastAndroid.show(`'${name}' deleted`, ToastAndroid.SHORT);
+          ToastAndroid.showWithGravity(
+            `Deleted`,
+            ToastAndroid.SHORT,
+            ToastAndroid.TOP,
+          );
         } else {
-          ToastAndroid.show(`'${name}' not found`, ToastAndroid.SHORT);
+          ToastAndroid.show(`Item not found`, ToastAndroid.SHORT);
         }
       } catch (error) {
         console.error("Error deleting preference:", error);
@@ -161,11 +235,6 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     const trimmedName = addName.trim();
     const trimmedAmount = addAmount.trim();
 
-    if (trimmedName === "") {
-      ToastAndroid.show("Please enter Expense Name", ToastAndroid.SHORT);
-      return;
-    }
-
     const amountNumber = trimmedAmount === "" ? 0 : parseInt(trimmedAmount, 10);
     if (Number.isNaN(amountNumber) || amountNumber < 0) {
       ToastAndroid.show("Enter a valid amount", ToastAndroid.SHORT);
@@ -179,20 +248,8 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       const storedData = await AsyncStorage.getItem("perfer");
       const existingData: input[] = storedData ? JSON.parse(storedData) : [];
 
-      // Check if name already exists
-      if (
-        existingData.some(
-          (item) => item.name.toLowerCase() === trimmedName.toLowerCase(),
-        )
-      ) {
-        ToastAndroid.show(
-          `'${trimmedName}' already exists`,
-          ToastAndroid.SHORT,
-        );
-        return;
-      }
-
       const newData: input = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         name: trimmedName,
         category: selectedCategory,
         value: amountNumber,
@@ -225,6 +282,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
 
     allinputs.forEach((input) => {
       initialExpList.push({
+        id: input.id,
         name: input.name,
         value: input.value ?? 0,
         category: input.category || "other",
@@ -308,6 +366,11 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       setShowWarning,
       setTotalGrossIncome,
       showWarning,
+      currencySymbol,
+      setCurrencySymbol,
+      theme,
+      toggleTheme,
+      themeColors: Colors[theme],
     }),
     [
       inputRefs,
@@ -324,6 +387,10 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       totalGrossIncome,
       netIncome,
       showWarning,
+      currencySymbol,
+      setCurrencySymbol,
+      theme,
+      toggleTheme,
     ],
   );
 

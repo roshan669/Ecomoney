@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useContext } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors } from "@/constants/theme";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { currencies } from "@/constants/categories";
+import { HomeContext } from "@/hooks/useHome";
 
 const { width, height } = Dimensions.get("window");
 
@@ -20,7 +21,7 @@ const slides = [
     id: "1",
     title: "Track Your Finances",
     description:
-      "Easily record your daily income and expenses to keep track of your money flow.",
+      "Easily record your daily expenses to keep track of your money flow.",
     icon: "wallet-outline",
   },
   {
@@ -41,12 +42,15 @@ const slides = [
 
 export default function OnboardingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedCurrency, setSelectedCurrency] = useState("$");
   const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
+  const { themeColors, theme, setCurrencySymbol } = useContext(HomeContext); // Access theme context
 
   const handleFinish = async () => {
     try {
       await AsyncStorage.setItem("hasLaunched", "true");
+      setCurrencySymbol(selectedCurrency);
       router.replace("/(tabs)");
     } catch (error) {
       console.error("Error saving onboarding status:", error);
@@ -68,17 +72,64 @@ export default function OnboardingScreen() {
           <Ionicons
             name={item.icon as any}
             size={100}
-            color={Colors.dark.primary}
+            color={themeColors.tint}
           />
         </View>
-        <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.description}>{item.description}</Text>
+        <Text style={[styles.title, { color: themeColors.text }]}>
+          {item.title}
+        </Text>
+        <Text style={[styles.description, { color: themeColors.subText }]}>
+          {item.description}
+        </Text>
+
+        {/* Currency Selection on the last slide */}
+        {item.id === "3" && (
+          <View style={styles.currencyContainer}>
+            <Text
+              style={[styles.currencyLabel, { color: themeColors.subText }]}
+            >
+              Select Currency:
+            </Text>
+            <View style={styles.currencyOptions}>
+              {currencies.map((curr) => (
+                <TouchableOpacity
+                  key={curr}
+                  style={[
+                    styles.currencyButton,
+                    {
+                      backgroundColor: themeColors.card,
+                      borderColor: themeColors.border,
+                      shadowColor: themeColors.text, // Subtle shadow based on theme
+                    },
+                    selectedCurrency === curr && {
+                      backgroundColor: themeColors.tint,
+                      borderColor: themeColors.tint,
+                    },
+                  ]}
+                  onPress={() => setSelectedCurrency(curr)}
+                >
+                  <Text
+                    style={[
+                      styles.currencyText,
+                      { color: themeColors.text },
+                      selectedCurrency === curr && styles.currencyTextSelected,
+                    ]}
+                  >
+                    {curr}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+    >
       <FlatList
         ref={flatListRef}
         data={slides}
@@ -98,12 +149,22 @@ export default function OnboardingScreen() {
           {slides.map((_, index) => (
             <View
               key={index}
-              style={[styles.dot, currentIndex === index && styles.activeDot]}
+              style={[
+                styles.dot,
+                { backgroundColor: themeColors.border },
+                currentIndex === index && {
+                  backgroundColor: themeColors.tint,
+                  width: 20,
+                },
+              ]}
             />
           ))}
         </View>
 
-        <TouchableOpacity style={styles.button} onPress={handleNext}>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: themeColors.tint }]}
+          onPress={handleNext}
+        >
           <Text style={styles.buttonText}>
             {currentIndex === slides.length - 1 ? "Get Started" : "Next"}
           </Text>
@@ -116,7 +177,6 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
   },
   slide: {
     width,
@@ -133,20 +193,53 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 10,
     textAlign: "center",
-    color: "#333",
   },
   description: {
     fontSize: 16,
-    color: "#666",
     textAlign: "center",
     paddingHorizontal: 20,
     lineHeight: 24,
   },
   footer: {
-    height: height * 0.2,
+    height: height * 0.25,
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingBottom: 50,
+  },
+  currencyContainer: {
+    marginTop: 20,
+    alignItems: "center",
+    width: "100%",
+  },
+  currencyLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  currencyOptions: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 15,
+  },
+  currencyButton: {
+    width: 45,
+    height: 45,
+    borderRadius: 25,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2, // Keep shadowopacity but color is handled inline
+    shadowRadius: 1.41,
+  },
+  currencyText: {
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  currencyTextSelected: {
+    color: "#fff",
   },
   pagination: {
     flexDirection: "row",
@@ -157,15 +250,9 @@ const styles = StyleSheet.create({
     height: 10,
     width: 10,
     borderRadius: 5,
-    backgroundColor: "#ccc",
     marginHorizontal: 5,
   },
-  activeDot: {
-    backgroundColor: Colors.dark.primary,
-    width: 20,
-  },
   button: {
-    backgroundColor: Colors.light.primary,
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: "center",

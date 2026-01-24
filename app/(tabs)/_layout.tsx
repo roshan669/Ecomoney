@@ -1,12 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useContext } from "react";
+import { HomeContext } from "@/hooks/useHome";
 
 export default function TabLayout() {
-  const datestr = new Date().toDateString().slice(4, 15);
+  const { themeColors } = useContext(HomeContext);
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#000",
+        tabBarActiveTintColor: themeColors.tint,
+        tabBarInactiveTintColor: themeColors.icon,
+        tabBarStyle: {
+          backgroundColor: themeColors.background,
+          borderTopColor: themeColors.border,
+        },
+        headerStyle: {
+          backgroundColor: themeColors.background,
+        },
+        headerTintColor: themeColors.text,
         // animation: "fade", // Removed to prevent shadow artifacts on Android
       }}
     >

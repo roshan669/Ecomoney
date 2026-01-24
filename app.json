@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Ecomoney",
-    "slug": "Ecomoney",
-    "version": "1.0.0",
+    "name": "EcoMoney",
+    "slug": "EcoMoney",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/adaptive-icon.png",
     "scheme": "ecomoney",
@@ -32,9 +32,9 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/adaptive-icon.png",
-          "imageWidth": 150,
-          "resizeMode": "COVER",
+          "image": "./assets/images/android-icon-background.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
             "backgroundColor": "#000000"

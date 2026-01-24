@@ -1,40 +1,38 @@
 import { View, Text, TouchableOpacity, BackHandler } from "react-native";
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetTextInput,
   BottomSheetView,
   BottomSheetScrollView,
+  useBottomSheetSpringConfigs,
 } from "@gorhom/bottom-sheet";
 import { styles } from "@/styles/homeScreenStyles";
 import { HomeContext } from "@/hooks/useHome";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import type { ExpenseCategory } from "@/types/types";
+import {
+  getCategoryColor,
+  expenseCategoriesList,
+} from "@/constants/categories";
 
-const expenseCategories: { key: ExpenseCategory; label: string; icon: any }[] =
-  [
-    { key: "food", label: "Food", icon: "restaurant-outline" },
-    { key: "transport", label: "Transport", icon: "car-outline" },
-    { key: "shopping", label: "Shopping", icon: "cart-outline" },
-    {
-      key: "entertainment",
-      label: "Entertainment",
-      icon: "game-controller-outline",
-    },
-    { key: "bills", label: "Bills", icon: "receipt-outline" },
-    { key: "health", label: "Health", icon: "medical-outline" },
-    { key: "education", label: "Education", icon: "school-outline" },
-    {
-      key: "other",
-      label: "Other",
-      icon: "ellipsis-horizontal-circle-outline",
-    },
-  ];
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function BottomSheet() {
   const amountInputRef = React.useRef<any>(null);
+  const inset = useSafeAreaInsets();
+
+  const [nameError, setNameError] = useState<string>("");
+  const [amountError, setAmountError] = useState<string>("");
+  const animationConfigs = useBottomSheetSpringConfigs({
+    damping: 60,
+    overshootClamping: true,
+    // restDisplacementThreshold: 0.1,
+    // restSpeedThreshold: 0.1,
+    stiffness: 350,
+  });
 
   useFocusEffect(
     React.useCallback(() => {
@@ -64,7 +62,28 @@ export default function BottomSheet() {
     setPerfer,
     perfer,
     handleAdd,
+    currencySymbol,
+    themeColors,
+    theme,
   } = useContext(HomeContext);
+
+  const handeleAddExpense = () => {
+    if (!addName.trim()) {
+      setNameError("Please enter a expense name.");
+      return;
+    }
+    setNameError("");
+    if (
+      !addAmount.trim() ||
+      isNaN(Number(addAmount)) ||
+      Number(addAmount) <= 0
+    ) {
+      setAmountError("Please enter a valid amount greater than zero.");
+      return;
+    }
+    setAmountError("");
+    handleAdd();
+  };
 
   const handleSheetClose = React.useCallback(() => {
     (bottomSheetModalRef as any)?.current?.close();
@@ -86,6 +105,7 @@ export default function BottomSheet() {
 
   return (
     <BottomSheetModal
+      animationConfigs={animationConfigs}
       ref={bottomSheetModalRef}
       onChange={handleSheetChanges}
       backdropComponent={renderBackdrop}
@@ -93,52 +113,113 @@ export default function BottomSheet() {
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       enablePanDownToClose={true}
-      snapPoints={["75%"]}
+      // snapPoints={["85%"]}
       animateOnMount={true}
       enableDismissOnClose={true}
+      bottomInset={inset.bottom}
+      backgroundStyle={{ backgroundColor: themeColors.card }}
+      handleIndicatorStyle={{ backgroundColor: themeColors.icon }}
     >
       <BottomSheetScrollView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: themeColors.card }}
         keyboardShouldPersistTaps="handled"
       >
-        <BottomSheetView style={styles.modalContentContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Expense</Text>
+        <BottomSheetView
+          style={[
+            styles.modalContentContainer,
+            { backgroundColor: themeColors.card },
+          ]}
+        >
+          <View
+            style={[
+              styles.modalHeader,
+              { borderBottomColor: themeColors.border },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: themeColors.text }]}>
+              Add Expense
+            </Text>
           </View>
 
           <View style={styles.modalInputContainer}>
-            <Text style={styles.inputLabel}>Expense Name</Text>
+            <Text style={[styles.inputLabel, { color: themeColors.subText }]}>
+              Expense Name
+            </Text>
             <BottomSheetTextInput
               placeholder="e.g., Groceries, Taxi, Dinner"
               value={addName}
               onChangeText={setAddName}
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                {
+                  color: themeColors.text,
+                  backgroundColor: themeColors.background,
+                  borderColor: themeColors.border,
+                },
+              ]}
+              placeholderTextColor={themeColors.subText}
               autoCapitalize="words"
-              placeholderTextColor="#adb5bd"
               returnKeyType="next"
               onSubmitEditing={() => amountInputRef.current?.focus()}
             />
           </View>
+          {nameError ? (
+            <Text
+              style={{
+                color: "#EF4444",
+                fontSize: 12,
+                marginBottom: 24,
+                width: "100%",
+                paddingHorizontal: 4,
+              }}
+            >
+              {nameError}
+            </Text>
+          ) : null}
 
           <View style={styles.modalInputContainer}>
-            <Text style={styles.inputLabel}>Amount</Text>
+            <Text style={[styles.inputLabel, { color: themeColors.subText }]}>
+              Amount
+            </Text>
             <BottomSheetTextInput
               ref={amountInputRef}
-              placeholder="₹0"
+              placeholder={`${currencySymbol}0`}
               value={addAmount}
               onChangeText={(text) => {
                 const numeric = text.replace(/[^0-9]/g, "");
                 setAddAmount(numeric);
               }}
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                {
+                  color: themeColors.text,
+                  backgroundColor: themeColors.background,
+                  borderColor: themeColors.border,
+                },
+              ]}
               keyboardType="numeric"
-              placeholderTextColor="#adb5bd"
+              placeholderTextColor={themeColors.subText}
               returnKeyType="done"
             />
           </View>
+          {amountError ? (
+            <Text
+              style={{
+                color: "#EF4444",
+                fontSize: 12,
+                marginBottom: 24,
+                width: "100%",
+                paddingHorizontal: 4,
+              }}
+            >
+              {amountError}
+            </Text>
+          ) : null}
 
           <View style={styles.typeSelectionContainer}>
-            <Text style={styles.inputLabel}>Category</Text>
+            <Text style={[styles.inputLabel, { color: themeColors.subText }]}>
+              Category
+            </Text>
             <View
               style={{
                 flexDirection: "row",
@@ -147,58 +228,77 @@ export default function BottomSheet() {
                 marginTop: 8,
               }}
             >
-              {expenseCategories.map((category) => (
-                <TouchableOpacity
-                  key={category.key}
-                  onPress={() => setPerfer(category.key)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor:
-                      perfer === category.key ? "#6366f1" : "#f3f4f6",
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    minWidth: "30%",
-                    gap: 8,
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={category.icon}
-                    size={20}
-                    color={perfer === category.key ? "#fff" : "#6b7280"}
-                  />
-                  <Text
+              {expenseCategoriesList.map((category) => {
+                const color = getCategoryColor(category.key);
+                const isSelected = perfer === category.key;
+                return (
+                  <TouchableOpacity
+                    key={category.key}
+                    onPress={() => setPerfer(category.key)}
                     style={{
-                      color: perfer === category.key ? "#fff" : "#374151",
-                      fontSize: 14,
-                      fontWeight: perfer === category.key ? "600" : "500",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: isSelected
+                        ? color
+                        : themeColors.background,
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      minWidth: "30%",
+                      gap: 8,
+                      borderWidth: isSelected ? 0 : 1,
+                      borderColor: isSelected
+                        ? "transparent"
+                        : themeColors.border,
                     }}
+                    activeOpacity={0.7}
                   >
-                    {category.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Ionicons
+                      name={category.icon}
+                      size={20}
+                      color={isSelected ? "#fff" : color}
+                    />
+                    <Text
+                      style={{
+                        color: isSelected ? "#fff" : themeColors.text,
+                        fontSize: 14,
+                        fontWeight: isSelected ? "600" : "500",
+                      }}
+                    >
+                      {category.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
           <View style={styles.modalFooter}>
             <TouchableOpacity
-              style={[styles.actionButton, styles.cancelButton]}
+              style={[
+                styles.actionButton,
+                styles.cancelButton,
+                { backgroundColor: themeColors.background },
+              ]}
               onPress={() => {
                 handleSheetClose();
                 setAddName("");
                 setAddAmount("");
                 setPerfer("");
+                setNameError("");
+                setAmountError("");
               }}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text
+                style={[styles.cancelButtonText, { color: themeColors.text }]}
+              >
+                Cancel
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.actionButton, styles.confirmButton]}
-              onPress={handleAdd}
+              onPress={handeleAddExpense}
             >
               <Text style={styles.confirmButtonText}>Add Expense</Text>
             </TouchableOpacity>

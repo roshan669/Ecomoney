@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import React, {
   useState,
@@ -21,6 +22,9 @@ import { useFocusEffect } from "expo-router";
 import { PieChart as GiftedPieChart } from "react-native-gifted-charts";
 import type { ReportData } from "@/types/types";
 import Menu from "@/components/Menu.modal";
+import { HomeContext } from "@/hooks/useHome";
+import { useContext } from "react";
+import { getCategoryColor } from "@/constants/categories";
 
 // --- Components ---
 
@@ -29,18 +33,29 @@ const MonthPill = ({
   label,
   isSelected,
   onPress,
+  themeColors,
 }: {
   label: string;
   isSelected: boolean;
   onPress: () => void;
+  themeColors: any;
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    style={[styles.monthPill, isSelected && styles.monthPillSelected]}
+    style={[
+      styles.monthPill,
+      {
+        backgroundColor: isSelected ? "#4F46E5" : themeColors.card,
+        borderColor: themeColors.border,
+      },
+    ]}
     activeOpacity={0.7}
   >
     <Text
-      style={[styles.monthPillText, isSelected && styles.monthPillTextSelected]}
+      style={[
+        styles.monthPillText,
+        { color: isSelected ? "#fff" : themeColors.text },
+      ]}
     >
       {label}
     </Text>
@@ -53,20 +68,30 @@ const SummaryCard = ({
   value,
   icon,
   color,
+  themeColors,
 }: {
   title: string;
   value: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
+  themeColors: any;
 }) => (
-  <View style={styles.summaryCardContainer}>
-    <View style={styles.summaryCardContent}>
+  <View
+    style={[styles.summaryCardContainer, { backgroundColor: themeColors.card }]}
+  >
+    <View
+      style={[styles.summaryCardContent, { backgroundColor: themeColors.card }]}
+    >
       <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
         <Ionicons name={icon} size={24} color={color} />
       </View>
       <View>
-        <Text style={styles.summaryLabel}>{title}</Text>
-        <Text style={styles.summaryValue}>{value}</Text>
+        <Text style={[styles.summaryLabel, { color: themeColors.subText }]}>
+          {title}
+        </Text>
+        <Text style={[styles.summaryValue, { color: themeColors.text }]}>
+          {value}
+        </Text>
       </View>
     </View>
   </View>
@@ -76,27 +101,33 @@ const SummaryCard = ({
 const ViewSegmentControl = ({
   selected,
   onSelect,
+  themeColors,
 }: {
   selected: "chart" | "table";
   onSelect: (v: "chart" | "table") => void;
+  themeColors: any;
 }) => (
-  <View style={styles.segmentContainer}>
+  <View
+    style={[styles.segmentContainer, { backgroundColor: themeColors.border }]}
+  >
     <TouchableOpacity
       style={[
         styles.segmentButton,
         selected === "chart" && styles.segmentButtonActive,
+        selected === "chart" && { backgroundColor: themeColors.card },
       ]}
       onPress={() => onSelect("chart")}
     >
       <Ionicons
         name="pie-chart"
         size={18}
-        color={selected === "chart" ? "#4F46E5" : "#6B7280"}
+        color={selected === "chart" ? "#4F46E5" : themeColors.icon}
       />
       <Text
         style={[
           styles.segmentText,
           selected === "chart" && styles.segmentTextActive,
+          { color: selected === "chart" ? "#4F46E5" : themeColors.subText },
         ]}
       >
         Analysis
@@ -106,18 +137,20 @@ const ViewSegmentControl = ({
       style={[
         styles.segmentButton,
         selected === "table" && styles.segmentButtonActive,
+        selected === "table" && { backgroundColor: themeColors.card },
       ]}
       onPress={() => onSelect("table")}
     >
       <Ionicons
         name="list"
         size={18}
-        color={selected === "table" ? "#4F46E5" : "#6B7280"}
+        color={selected === "table" ? "#4F46E5" : themeColors.icon}
       />
       <Text
         style={[
           styles.segmentText,
           selected === "table" && styles.segmentTextActive,
+          { color: selected === "table" ? "#4F46E5" : themeColors.subText },
         ]}
       >
         Records
@@ -134,9 +167,20 @@ export default function Report() {
     useState<string>("Select Month");
   const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const { currencySymbol, themeColors, theme } = useContext(HomeContext);
 
   // Refs
   const isMounted = useRef(true);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const hasLoadedRef = useRef(false);
+  const lastFetchTime = useRef<number>(0);
+
+  // Update hasLoadedRef when we have data
+  useEffect(() => {
+    if (reportData.length > 0) {
+      hasLoadedRef.current = true;
+    }
+  }, [reportData]);
 
   const getAllMonthKeys = useCallback(async (): Promise<string[]> => {
     try {
@@ -150,28 +194,71 @@ export default function Report() {
     }
   }, []);
 
-  const loadReportData = useCallback(async (month: string) => {
-    if (!isMounted.current) return;
-    setIsLoading(true);
+  const loadReportData = useCallback(
+    async (month: string) => {
+      if (!isMounted.current) return;
 
-    try {
-      const storedData = await AsyncStorage.getItem(month);
-      if (isMounted.current && storedData) {
-        const parsedData = JSON.parse(storedData);
-        setReportData(parsedData);
-        setSelectedMonthTitle(month);
-      } else if (isMounted.current) {
-        setReportData([]);
-        setSelectedMonthTitle(month);
+      // Only show loading if we haven't loaded data before
+      if (!hasLoadedRef.current) {
+        setIsLoading(true);
       }
-    } catch (_e) {
-      console.error(_e);
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
+
+      try {
+        const storedData = await AsyncStorage.getItem(month);
+
+        const updateData = () => {
+          if (isMounted.current && storedData) {
+            const parsedData: ReportData[] = JSON.parse(storedData);
+            parsedData.sort(
+              (a, b) =>
+                new Date(a.todaysDate).getTime() -
+                new Date(b.todaysDate).getTime(),
+            );
+            setReportData(parsedData);
+            setSelectedMonthTitle(month);
+          } else if (isMounted.current) {
+            setReportData([]);
+            setSelectedMonthTitle(month);
+          }
+        };
+
+        if (hasLoadedRef.current && isMounted.current) {
+          // Smooth transition: Fade Out -> Update -> Fade In
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: false,
+          }).start(({ finished }) => {
+            if (finished) {
+              updateData();
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: false,
+              }).start(() => {
+                if (isMounted.current) setIsLoading(false);
+              });
+            }
+          });
+        } else {
+          // First load
+          updateData();
+          fadeAnim.setValue(0);
+          if (isMounted.current) setIsLoading(false);
+
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: false,
+          }).start();
+        }
+      } catch (_e) {
+        console.error(_e);
+        if (isMounted.current) setIsLoading(false);
       }
-    }
-  }, []);
+    },
+    [fadeAnim],
+  );
 
   // --- Effects ---
   useEffect(() => {
@@ -184,7 +271,23 @@ export default function Report() {
   useFocusEffect(
     useCallback(() => {
       const init = async () => {
-        setIsLoading(true);
+        // Check for updates
+        const lastUpdateStr = await AsyncStorage.getItem("LAST_DATA_UPDATE");
+        const lastUpdate = lastUpdateStr ? parseInt(lastUpdateStr) : 0;
+        const needsUpdate =
+          !hasLoadedRef.current || lastUpdate > lastFetchTime.current;
+
+        if (!needsUpdate && hasLoadedRef.current) {
+          // Even if no update needed, refresh month keys in case (unlikely but safe)
+          const keys = await getAllMonthKeys();
+          if (isMounted.current) setAllMonths(keys);
+          return;
+        }
+
+        // Only show loading if we haven't loaded data before
+        if (!hasLoadedRef.current) {
+          setIsLoading(true);
+        }
         const keys = await getAllMonthKeys();
         if (isMounted.current) {
           setAllMonths(keys);
@@ -195,11 +298,13 @@ export default function Report() {
               keys.includes(selectedMonthTitle)
                 ? selectedMonthTitle
                 : keys[keys.length - 1];
-            loadReportData(target);
+            await loadReportData(target);
+            lastFetchTime.current = Date.now();
           } else {
             setIsLoading(false);
             setReportData([]);
             setSelectedMonthTitle("Select Month");
+            lastFetchTime.current = Date.now();
           }
         }
       };
@@ -231,7 +336,7 @@ export default function Report() {
       categoryData: sortedCats.map(([k, v], i) => ({
         name: k.charAt(0).toUpperCase() + k.slice(1),
         value: v,
-        color: getColorForCategory(k, i),
+        color: getCategoryColor(k),
       })),
     };
   }, [reportData]);
@@ -247,11 +352,170 @@ export default function Report() {
     }));
   }, [stats]);
 
-  // --- HTML Generation (Legacy support) ---
+  // --- HTML Generation ---
   const generateHTML = useCallback(() => {
-    // Basic implementation for menu compatibility
-    return `<html><body><h1>Report for ${selectedMonthTitle}</h1></body></html>`;
-  }, [selectedMonthTitle]);
+    let rows = "";
+    let grandTotal = 0;
+
+    // Create rows for each item
+    reportData.forEach((dayData) => {
+      dayData.all.forEach((item) => {
+        const val =
+          typeof item.value === "number"
+            ? item.value
+            : parseFloat(String(item.value));
+        grandTotal += val || 0;
+        rows += `
+              <tr>
+                  <td>${dayData.todaysDate}</td>
+                  <td>${item.name}</td>
+                  <td>${currencySymbol}${(val || 0).toFixed(2)}</td>
+              </tr>
+           `;
+      });
+    });
+
+    // Generate chart conic-gradient segments
+    let conicGradient = "";
+    let currentAngle = 0;
+    const totalForChart = parseFloat(stats.total) || 1; // avoid divide by zero
+
+    chartData.forEach((d, i) => {
+      const percentage = (d.value / totalForChart) * 100;
+      const start = currentAngle;
+      const end = currentAngle + percentage;
+      conicGradient += `${d.color} ${start}% ${end}%, `;
+      currentAngle = end;
+    });
+    // Remove last comma and space
+    conicGradient = conicGradient.slice(0, -2);
+    if (!conicGradient) conicGradient = "#E5E7EB 0% 100%";
+
+    // Legends HTML
+    const legendsHtml = chartData
+      .map(
+        (d) => `
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: ${d.color}"></div>
+        <div class="legend-name">${d.label}</div>
+        <div class="legend-val">${currencySymbol}${d.value.toFixed(2)} (${
+          totalForChart > 0 ? Math.round((d.value / totalForChart) * 100) : 0
+        }%)</div>
+      </div>
+    `,
+      )
+      .join("");
+
+    return `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; }
+            h1 { text-align: center; color: #111827; margin-bottom: 24px; }
+            .total { text-align: right; font-size: 20px; margin-top: 24px; font-weight: bold; color: #111827; }
+            table { width: 100%; border-collapse: collapse; background-color: white; font-size: 14px; margin-bottom: 40px; }
+            thead { background-color: #4F46E5; }
+            th { color: white; padding: 12px; text-align: left; font-weight: 600; border: 1px solid #4F46E5; }
+            td { border: 1px solid #E5E7EB; padding: 10px; color: #374151; }
+            tr:nth-child(even) { background-color: #F9FAFB; }
+            .date-col { width: 25%; }
+            .item-col { width: 50%; }
+            .price-col { width: 25%; }
+            
+            /* Chart Section */
+            .chart-section { 
+              page-break-inside: avoid;
+              margin-top: 40px; 
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              border-top: 2px solid #E5E7EB;
+              padding-top: 40px;
+            }
+            .pie-chart {
+              width: 200px;
+              height: 200px;
+              border-radius: 50%;
+              background: conic-gradient(${conicGradient});
+              position: relative;
+              margin-bottom: 30px;
+            }
+            .pie-hole {
+              position: absolute;
+              top: 50%; left: 50%;
+              transform: translate(-50%, -50%);
+              width: 120px; height: 120px;
+              background: white;
+              border-radius: 50%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+            .hole-label { font-size: 12px; color: #6B7280; }
+            .hole-total { font-size: 16px; font-weight: bold; color: #1F2937; }
+
+            .legends {
+              width: 100%;
+              max-width: 400px;
+            }
+            .legend-item {
+              display: flex;
+              align-items: center;
+              padding: 8px 0;
+              border-bottom: 1px solid #F3F4F6;
+            }
+            .legend-color {
+              width: 12px; height: 12px;
+              border-radius: 6px;
+              margin-right: 12px;
+            }
+            .legend-name {
+              flex: 1;
+              font-size: 14px;
+              color: #374151;
+            }
+            .legend-val {
+              font-size: 14px;
+              font-weight: 600;
+              color: #111827;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Financial Report - ${selectedMonthTitle}</h1>
+          
+          <table>
+            <thead>
+              <tr>
+                <th class="date-col">Date</th>
+                <th class="item-col">Item Name</th>
+                <th class="price-col">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || '<tr><td colspan="3" style="text-align:center">No records found</td></tr>'}
+            </tbody>
+          </table>
+          <div class="total">Total Expenses: ${currencySymbol}${grandTotal.toFixed(2)}</div>
+
+          <div class="chart-section">
+            <h2>Expense Breakdown</h2>
+            <div class="pie-chart">
+              <div class="pie-hole">
+                <div class="hole-label">Total</div>
+                <div class="hole-total">${currencySymbol}${grandTotal.toFixed(2)}</div>
+              </div>
+            </div>
+            <div class="legends">
+              ${legendsHtml}
+            </div>
+          </div>
+        </body>
+      </html>
+      `;
+  }, [reportData, selectedMonthTitle, stats, chartData, currencySymbol]);
 
   // --- Renderers ---
 
@@ -275,9 +539,13 @@ export default function Report() {
   );
 
   const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.headerTop}>
-        <Text style={styles.headerTitle}>Financial Report</Text>
+    <View style={[styles.header, { backgroundColor: themeColors.background }]}>
+      <View
+        style={[styles.headerTop, { borderBottomColor: themeColors.border }]}
+      >
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>
+          Monthly Report
+        </Text>
         <Menu
           generateHTML={generateHTML}
           reportData={reportData} // pass raw data based on interface
@@ -297,6 +565,7 @@ export default function Report() {
             label={item}
             isSelected={item === selectedMonthTitle}
             onPress={() => loadReportData(item)}
+            themeColors={themeColors}
           />
         )}
       />
@@ -304,21 +573,26 @@ export default function Report() {
   );
 
   const renderCharts = () => (
-    <View style={styles.chartSection}>
+    <View style={[styles.chartSection, { backgroundColor: themeColors.card }]}>
       <View style={styles.chartWrapper}>
         <GiftedPieChart
           data={chartData}
           donut
           radius={110}
-          innerRadius={75}
+          innerRadius={60}
           showText
           textColor="#fff"
           // openEnded={0}
-          innerCircleColor="#fff"
+          innerCircleColor={themeColors.card}
           centerLabelComponent={() => (
             <View style={styles.donutCenter}>
-              <Text style={styles.donutTitle}>Total</Text>
-              <Text style={styles.donutAmount}>₹{stats.total}</Text>
+              <Text style={[styles.donutTitle, { color: themeColors.subText }]}>
+                Total
+              </Text>
+              <Text style={[styles.donutAmount, { color: themeColors.text }]}>
+                {currencySymbol}
+                {stats.total}
+              </Text>
             </View>
           )}
           animationDuration={1000}
@@ -332,8 +606,13 @@ export default function Report() {
             <View
               style={[styles.legendColor, { backgroundColor: item.color }]}
             />
-            <Text style={styles.legendName}>{item.name}</Text>
-            <Text style={styles.legendValue}>₹{item.value.toFixed(2)}</Text>
+            <Text style={[styles.legendName, { color: themeColors.text }]}>
+              {item.name}
+            </Text>
+            <Text style={[styles.legendValue, { color: themeColors.text }]}>
+              {currencySymbol}
+              {item.value.toFixed(2)}
+            </Text>
           </View>
         ))}
       </View>
@@ -344,12 +623,17 @@ export default function Report() {
     // Prep table data
     const headers = ["Date", "Expense", "Items"];
     return (
-      <View style={styles.tableContainer}>
+      <View
+        style={[styles.tableContainer, { backgroundColor: themeColors.card }]}
+      >
         <Table borderStyle={{ borderWidth: 0 }}>
           <Row
             data={headers}
-            style={styles.tableHeader}
-            textStyle={styles.tableHeaderText}
+            style={[
+              styles.tableHeader,
+              { backgroundColor: themeColors.border },
+            ]}
+            textStyle={[styles.tableHeaderText, { color: themeColors.text }]}
             flexArr={[2, 2, 3]}
           />
           {reportData.map((item, i) => (
@@ -357,11 +641,21 @@ export default function Report() {
               key={i}
               data={[
                 item.todaysDate,
-                `₹${parseFloat(item.totalExpense).toFixed(2)}`,
+                `${currencySymbol}${parseFloat(item.totalExpense).toFixed(2)}`,
                 item.all.length,
               ]}
-              style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}
-              textStyle={styles.tableRowText}
+              style={[
+                styles.tableRow,
+                {
+                  backgroundColor:
+                    i % 2 === 1
+                      ? theme === "dark"
+                        ? "#27272A"
+                        : "#F9FAFB"
+                      : themeColors.card,
+                },
+              ]}
+              textStyle={[styles.tableRowText, { color: themeColors.subText }]}
               flexArr={[2, 2, 3]}
             />
           ))}
@@ -371,7 +665,9 @@ export default function Report() {
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[styles.container, { backgroundColor: themeColors.background }]}
+    >
       {renderHeader()}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -386,27 +682,43 @@ export default function Report() {
             <View style={styles.summaryRow}>
               <SummaryCard
                 title="Total Spent"
-                value={`₹${stats.total}`}
+                value={`${currencySymbol}${stats.total}`}
                 icon="wallet-outline"
                 color="#4F46E5"
+                themeColors={themeColors}
               />
               <SummaryCard
                 title="Top Category"
-                value={stats.topCategory}
+                value={stats.topCategory.toLocaleUpperCase()}
                 icon="trending-up-outline"
                 color="#EC4899"
+                themeColors={themeColors}
               />
             </View>
 
             {/* View Switcher */}
-            <ViewSegmentControl selected={viewMode} onSelect={setViewMode} />
+            <ViewSegmentControl
+              selected={viewMode}
+              onSelect={setViewMode}
+              themeColors={themeColors}
+            />
 
             {/* Main Content */}
-            <View style={styles.contentCardContainer}>
-              <View style={styles.contentCardInner}>
+            <Animated.View
+              style={[
+                styles.contentCardContainer,
+                { opacity: fadeAnim, backgroundColor: themeColors.card },
+              ]}
+            >
+              <View
+                style={[
+                  styles.contentCardInner,
+                  { backgroundColor: themeColors.card },
+                ]}
+              >
                 {viewMode === "chart" ? renderCharts() : renderTable()}
               </View>
-            </View>
+            </Animated.View>
           </View>
         )}
       </ScrollView>
@@ -415,21 +727,6 @@ export default function Report() {
 }
 
 // Helper utility for consistent colors
-function getColorForCategory(category: string, index: number): string {
-  const map: Record<string, string> = {
-    food: "#F59E0B", // Amber
-    transport: "#3B82F6", // Blue
-    shopping: "#EC4899", // Pink
-    entertainment: "#8B5CF6", // Violet
-    bills: "#10B981", // Emerald
-    health: "#EF4444", // Red
-    education: "#06B6D4", // Cyan
-    other: "#6B7280", // Gray
-  };
-  return (
-    map[category.toLowerCase()] || `hsl(${(index * 137.5) % 360}, 70%, 50%)` // Golden angle generic colors
-  );
-}
 
 const styles = StyleSheet.create({
   container: {
