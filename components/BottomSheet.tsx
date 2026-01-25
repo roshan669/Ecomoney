@@ -12,7 +12,6 @@ import { styles } from "@/styles/homeScreenStyles";
 import { HomeContext } from "@/hooks/useHome";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
-import type { ExpenseCategory } from "@/types/types";
 import {
   getCategoryColor,
   expenseCategoriesList,
@@ -64,7 +63,6 @@ export default function BottomSheet() {
     handleAdd,
     currencySymbol,
     themeColors,
-    theme,
   } = useContext(HomeContext);
 
   const handeleAddExpense = () => {
@@ -109,11 +107,12 @@ export default function BottomSheet() {
       ref={bottomSheetModalRef}
       onChange={handleSheetChanges}
       backdropComponent={renderBackdrop}
-      keyboardBehavior="interactive"
+      keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
+      android_keyboardInputMode="adjustPan"
       enablePanDownToClose={true}
       // snapPoints={["85%"]}
+      // enableDynamicSizing
       animateOnMount={true}
       enableDismissOnClose={true}
       bottomInset={inset.bottom}

@@ -4,9 +4,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
   Animated,
+  Modal,
+  Pressable,
 } from "react-native";
 import React, {
   useState,
@@ -14,55 +15,83 @@ import React, {
   useRef,
   useMemo,
   useCallback,
+  useContext,
+  memo,
 } from "react";
 import { Table, Row } from "react-native-table-component";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { PieChart as GiftedPieChart } from "react-native-gifted-charts";
 import type { ReportData } from "@/types/types";
 import Menu from "@/components/Menu.modal";
 import { HomeContext } from "@/hooks/useHome";
-import { useContext } from "react";
+import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryColor } from "@/constants/categories";
 
 // --- Components ---
 
-// 1. Month Pill
-const MonthPill = ({
-  label,
-  isSelected,
-  onPress,
-  themeColors,
-}: {
-  label: string;
-  isSelected: boolean;
-  onPress: () => void;
-  themeColors: any;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={[
-      styles.monthPill,
-      {
-        backgroundColor: isSelected ? "#4F46E5" : themeColors.card,
-        borderColor: themeColors.border,
-      },
-    ]}
-    activeOpacity={0.7}
-  >
-    <Text
-      style={[
-        styles.monthPillText,
-        { color: isSelected ? "#fff" : themeColors.text },
-      ]}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
+// Memoized Pie Chart Component
+const MemoizedPieChart = memo(
+  ({
+    chartData,
+    stats,
+    currencySymbol,
+    themeColors,
+  }: {
+    chartData: any[];
+    stats: any;
+    currencySymbol: string;
+    themeColors: any;
+  }) => (
+    <View style={[styles.chartSection, { backgroundColor: themeColors.card }]}>
+      <View style={styles.chartWrapper}>
+        <GiftedPieChart
+          data={chartData}
+          donut
+          radius={110}
+          innerRadius={60}
+          showText
+          textColor="#fff"
+          innerCircleColor={themeColors.card}
+          centerLabelComponent={() => (
+            <View style={styles.donutCenter}>
+              <Text style={[styles.donutTitle, { color: themeColors.subText }]}>
+                Total
+              </Text>
+              <Text style={[styles.donutAmount, { color: themeColors.text }]}>
+                {currencySymbol}
+                {stats.total}
+              </Text>
+            </View>
+          )}
+          animationDuration={1000}
+        />
+      </View>
+
+      {/* Legend List */}
+      <View style={styles.legendContainer}>
+        {stats.categoryData.map((item: any, index: number) => (
+          <View key={index} style={styles.legendItem}>
+            <View
+              style={[styles.legendColor, { backgroundColor: item.color }]}
+            />
+            <Text style={[styles.legendName, { color: themeColors.text }]}>
+              {item.name}
+            </Text>
+            <Text style={[styles.legendValue, { color: themeColors.text }]}>
+              {currencySymbol}
+              {item.value.toFixed(2)}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  ),
 );
 
-// 2. Summary Card
+MemoizedPieChart.displayName = "MemoizedPieChart";
+
+// 1. Summary Card
 const SummaryCard = ({
   title,
   value,
@@ -97,7 +126,7 @@ const SummaryCard = ({
   </View>
 );
 
-// 3. Segmented Control
+// 2. Segmented Control
 const ViewSegmentControl = ({
   selected,
   onSelect,
@@ -164,16 +193,25 @@ export default function Report() {
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [allMonths, setAllMonths] = useState<string[]>([]);
   const [selectedMonthTitle, setSelectedMonthTitle] =
-    useState<string>("Select Month");
+    useState<string>("All Time");
   const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const { currencySymbol, themeColors, theme } = useContext(HomeContext);
+  const [allExpenses, setAllExpenses] = useState<any[]>([]);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const { currencySymbol, themeColors, theme, dbVersion } =
+    useContext(HomeContext);
+
+  // Database hook for expense analytics
+  const { loadExpenses } = useExpenses();
 
   // Refs
   const isMounted = useRef(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasLoadedRef = useRef(false);
   const lastFetchTime = useRef<number>(0);
+  const loadingRef = useRef(false);
+  const previousReportDataRef = useRef<string>("");
+  const dbVersionRef = useRef<number>(0);
 
   // Update hasLoadedRef when we have data
   useEffect(() => {
@@ -182,20 +220,8 @@ export default function Report() {
     }
   }, [reportData]);
 
-  const getAllMonthKeys = useCallback(async (): Promise<string[]> => {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const monthKeys = keys
-        .filter((key) => key !== "perfer" && /^[A-Za-z]{3} \d{4}$/.test(key))
-        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-      return monthKeys;
-    } catch (_error) {
-      return [];
-    }
-  }, []);
-
   const loadReportData = useCallback(
-    async (month: string) => {
+    async (month: string, expenses?: any[]) => {
       if (!isMounted.current) return;
 
       // Only show loading if we haven't loaded data before
@@ -204,26 +230,102 @@ export default function Report() {
       }
 
       try {
-        const storedData = await AsyncStorage.getItem(month);
+        // Use provided expenses or fall back to state
+        const expensesToUse = expenses || allExpenses;
+
+        // Parse month string (e.g., "Jan 2026") to get start and end dates
+        const [monthStr, yearStr] = month.split(" ");
+        const monthNames = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+        const monthIndex = monthNames.indexOf(monthStr);
+        const year = parseInt(yearStr);
+
+        if (monthIndex === -1 || isNaN(year)) {
+          console.error("Invalid month format:", month);
+          return;
+        }
+
+        // Create dates using year and month index (0-based)
+        const startDate = new Date(year, monthIndex, 1)
+          .toISOString()
+          .split("T")[0];
+        const endDate = new Date(year, monthIndex + 1, 0)
+          .toISOString()
+          .split("T")[0];
+
+        console.log(
+          "Loading report data for month:",
+          month,
+          "Range:",
+          startDate,
+          "-",
+          endDate,
+        );
+        console.log("Total expenses to filter:", expensesToUse.length);
+
+        // Group expenses by day
+        const groupedByDay: Record<string, any[]> = {};
+        expensesToUse.forEach((exp) => {
+          if (exp.date >= startDate && exp.date <= endDate) {
+            if (!groupedByDay[exp.date]) {
+              groupedByDay[exp.date] = [];
+            }
+            groupedByDay[exp.date].push({
+              id: exp.id,
+              name: exp.name,
+              value: exp.value,
+              category: exp.category,
+            });
+          }
+        });
+
+        console.log(
+          "Grouped expenses by day:",
+          Object.keys(groupedByDay).length,
+          "days",
+        );
+
+        // Convert to ReportData format
+        const reportDataArray: ReportData[] = Object.entries(groupedByDay)
+          .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+          .map(([date, items]) => ({
+            todaysDate: date,
+            totalExpense: items
+              .reduce((sum, item) => sum + item.value, 0)
+              .toFixed(2),
+            month: month,
+            all: items,
+            time: new Date().toISOString(),
+          }));
+
+        console.log("Report data array:", reportDataArray);
 
         const updateData = () => {
-          if (isMounted.current && storedData) {
-            const parsedData: ReportData[] = JSON.parse(storedData);
-            parsedData.sort(
-              (a, b) =>
-                new Date(a.todaysDate).getTime() -
-                new Date(b.todaysDate).getTime(),
-            );
-            setReportData(parsedData);
-            setSelectedMonthTitle(month);
-          } else if (isMounted.current) {
-            setReportData([]);
+          if (isMounted.current) {
+            setReportData(reportDataArray);
             setSelectedMonthTitle(month);
           }
         };
 
-        if (hasLoadedRef.current && isMounted.current) {
-          // Smooth transition: Fade Out -> Update -> Fade In
+        // Check if data actually changed by comparing with previous data
+        const newDataString = JSON.stringify(reportDataArray);
+        const dataChanged = newDataString !== previousReportDataRef.current;
+        previousReportDataRef.current = newDataString;
+
+        if (hasLoadedRef.current && isMounted.current && dataChanged) {
+          // Smooth transition: Fade Out -> Update -> Fade In (only if data changed)
           Animated.timing(fadeAnim, {
             toValue: 0,
             duration: 200,
@@ -241,23 +343,126 @@ export default function Report() {
             }
           });
         } else {
-          // First load
+          // First load or no data change
           updateData();
-          fadeAnim.setValue(0);
+          if (!dataChanged && hasLoadedRef.current) {
+            // Data hasn't changed, just set opacity to 1 without animation
+            fadeAnim.setValue(1);
+          } else {
+            // First load
+            fadeAnim.setValue(0);
+            Animated.timing(fadeAnim, {
+              toValue: 1,
+              duration: 500,
+              useNativeDriver: false,
+            }).start();
+          }
           if (isMounted.current) setIsLoading(false);
-
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: false,
-          }).start();
         }
       } catch (_e) {
         console.error(_e);
-        if (isMounted.current) setIsLoading(false);
+        if (isMounted.current) {
+          setReportData([]);
+          setSelectedMonthTitle(month);
+          setIsLoading(false);
+        }
       }
     },
-    [fadeAnim],
+    [fadeAnim, allExpenses],
+  );
+
+  // Load all data combined (All Time view)
+  const loadAllData = useCallback(
+    async (expenses?: any[]) => {
+      if (!isMounted.current) return;
+
+      if (!hasLoadedRef.current) {
+        setIsLoading(true);
+      }
+
+      try {
+        const expensesToUse = expenses || allExpenses;
+        console.log("Loading ALL data, total expenses:", expensesToUse.length);
+
+        // Group all expenses by day
+        const groupedByDay: Record<string, any[]> = {};
+        expensesToUse.forEach((exp) => {
+          if (!groupedByDay[exp.date]) {
+            groupedByDay[exp.date] = [];
+          }
+          groupedByDay[exp.date].push({
+            id: exp.id,
+            name: exp.name,
+            value: exp.value,
+            category: exp.category,
+          });
+        });
+
+        // Convert to ReportData format
+        const reportDataArray: ReportData[] = Object.entries(groupedByDay)
+          .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+          .map(([date, items]) => ({
+            todaysDate: date,
+            totalExpense: items
+              .reduce((sum, item) => sum + item.value, 0)
+              .toFixed(2),
+            month: "All Time",
+            all: items,
+            time: new Date().toISOString(),
+          }));
+
+        const updateData = () => {
+          if (isMounted.current) {
+            setReportData(reportDataArray);
+            setSelectedMonthTitle("All Time");
+          }
+        };
+
+        const newDataString = JSON.stringify(reportDataArray);
+        const dataChanged = newDataString !== previousReportDataRef.current;
+        previousReportDataRef.current = newDataString;
+
+        if (hasLoadedRef.current && isMounted.current && dataChanged) {
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: false,
+          }).start(({ finished }) => {
+            if (finished) {
+              updateData();
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: false,
+              }).start(() => {
+                if (isMounted.current) setIsLoading(false);
+              });
+            }
+          });
+        } else {
+          updateData();
+          if (!dataChanged && hasLoadedRef.current) {
+            fadeAnim.setValue(1);
+          } else {
+            fadeAnim.setValue(0);
+            Animated.timing(fadeAnim, {
+              toValue: 1,
+              duration: 500,
+              useNativeDriver: false,
+            }).start();
+          }
+          if (isMounted.current) setIsLoading(false);
+        }
+      } catch (_e) {
+        console.error(_e);
+        if (isMounted.current) {
+          setReportData([]);
+          setSelectedMonthTitle("All Time");
+          setIsLoading(false);
+        }
+      }
+    },
+    [fadeAnim, allExpenses],
   );
 
   // --- Effects ---
@@ -270,46 +475,88 @@ export default function Report() {
 
   useFocusEffect(
     useCallback(() => {
-      const init = async () => {
-        // Check for updates
-        const lastUpdateStr = await AsyncStorage.getItem("LAST_DATA_UPDATE");
-        const lastUpdate = lastUpdateStr ? parseInt(lastUpdateStr) : 0;
-        const needsUpdate =
-          !hasLoadedRef.current || lastUpdate > lastFetchTime.current;
+      // Check if we need to reload data based on database changes
+      const shouldReload =
+        !hasLoadedRef.current || dbVersionRef.current !== dbVersion;
 
-        if (!needsUpdate && hasLoadedRef.current) {
-          // Even if no update needed, refresh month keys in case (unlikely but safe)
-          const keys = await getAllMonthKeys();
-          if (isMounted.current) setAllMonths(keys);
-          return;
-        }
+      // Only reload if:
+      // 1. We haven't loaded data before, OR
+      // 2. Database version has changed (indicating DB modifications)
+      if (shouldReload) {
+        // Prevent multiple simultaneous loads
+        if (loadingRef.current) return;
+        loadingRef.current = true;
+        dbVersionRef.current = dbVersion;
 
-        // Only show loading if we haven't loaded data before
-        if (!hasLoadedRef.current) {
-          setIsLoading(true);
-        }
-        const keys = await getAllMonthKeys();
-        if (isMounted.current) {
-          setAllMonths(keys);
-          if (keys.length > 0) {
-            // If already on a valid month, invoke load for it, else load last
-            const target =
-              selectedMonthTitle !== "Select Month" &&
-              keys.includes(selectedMonthTitle)
-                ? selectedMonthTitle
-                : keys[keys.length - 1];
-            await loadReportData(target);
-            lastFetchTime.current = Date.now();
-          } else {
-            setIsLoading(false);
-            setReportData([]);
-            setSelectedMonthTitle("Select Month");
-            lastFetchTime.current = Date.now();
+        const init = async () => {
+          // Only show loading if we haven't loaded data before
+          if (!hasLoadedRef.current) {
+            setIsLoading(true);
           }
-        }
-      };
-      init();
-    }, [getAllMonthKeys, loadReportData, selectedMonthTitle]),
+
+          try {
+            // Load all expenses from database
+            const allExp = await loadExpenses();
+            console.log("Loaded expenses from DB:", allExp);
+            if (isMounted.current) {
+              setAllExpenses(allExp);
+
+              // Get available months from all expenses
+              const monthSet = new Set<string>();
+              allExp.forEach((exp: any) => {
+                if (exp.date) {
+                  // Parse date string directly (format: YYYY-MM-DD)
+                  const [year, month, day] = exp.date.split("-").map(Number);
+                  const date = new Date(year, month - 1, day); // month is 0-indexed
+                  const monthKey = date.toLocaleString("en-US", {
+                    month: "short",
+                    year: "numeric",
+                  });
+                  monthSet.add(monthKey);
+                }
+              });
+
+              const months = Array.from(monthSet).sort(
+                (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+              );
+
+              console.log("Available months:", months);
+              setAllMonths(months);
+
+              if (allExp.length > 0) {
+                // Load based on current selection
+                if (selectedMonthTitle === "All Time") {
+                  console.log("Loading all data");
+                  await loadAllData(allExp);
+                } else if (months.includes(selectedMonthTitle)) {
+                  console.log("Loading report for month:", selectedMonthTitle);
+                  await loadReportData(selectedMonthTitle, allExp);
+                } else {
+                  // Default to All Time view
+                  console.log("Loading all data (default)");
+                  await loadAllData(allExp);
+                }
+                lastFetchTime.current = Date.now();
+              } else {
+                console.log("No expenses found");
+                setIsLoading(false);
+                setReportData([]);
+                setSelectedMonthTitle("All Time");
+                lastFetchTime.current = Date.now();
+              }
+            }
+          } catch (error) {
+            console.error("Error loading report data:", error);
+            if (isMounted.current) setIsLoading(false);
+          } finally {
+            loadingRef.current = false;
+          }
+        };
+
+        init();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dbVersion]),
   );
 
   // --- Computations ---
@@ -544,7 +791,9 @@ export default function Report() {
         style={[styles.headerTop, { borderBottomColor: themeColors.border }]}
       >
         <Text style={[styles.headerTitle, { color: themeColors.text }]}>
-          Monthly Report
+          {selectedMonthTitle === "All Time"
+            ? "All Time Report"
+            : "Monthly Report"}
         </Text>
         <Menu
           generateHTML={generateHTML}
@@ -553,70 +802,37 @@ export default function Report() {
         />
       </View>
 
-      {/* Month Selector */}
-      <FlatList
-        horizontal
-        data={allMonths}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.monthList}
-        keyExtractor={(item) => item}
-        renderItem={({ item }) => (
-          <MonthPill
-            label={item}
-            isSelected={item === selectedMonthTitle}
-            onPress={() => loadReportData(item)}
-            themeColors={themeColors}
-          />
-        )}
-      />
+      {/* Month Dropdown Selector */}
+      <TouchableOpacity
+        style={[
+          styles.monthDropdown,
+          {
+            backgroundColor: themeColors.card,
+            borderColor: themeColors.border,
+          },
+        ]}
+        onPress={() => setShowMonthPicker(true)}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="calendar-outline" size={18} color="#4F46E5" />
+        <Text style={[styles.monthDropdownText, { color: themeColors.text }]}>
+          {selectedMonthTitle}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={themeColors.subText} />
+      </TouchableOpacity>
     </View>
   );
 
-  const renderCharts = () => (
-    <View style={[styles.chartSection, { backgroundColor: themeColors.card }]}>
-      <View style={styles.chartWrapper}>
-        <GiftedPieChart
-          data={chartData}
-          donut
-          radius={110}
-          innerRadius={60}
-          showText
-          textColor="#fff"
-          // openEnded={0}
-          innerCircleColor={themeColors.card}
-          centerLabelComponent={() => (
-            <View style={styles.donutCenter}>
-              <Text style={[styles.donutTitle, { color: themeColors.subText }]}>
-                Total
-              </Text>
-              <Text style={[styles.donutAmount, { color: themeColors.text }]}>
-                {currencySymbol}
-                {stats.total}
-              </Text>
-            </View>
-          )}
-          animationDuration={1000}
-        />
-      </View>
-
-      {/* Legend List */}
-      <View style={styles.legendContainer}>
-        {stats.categoryData.map((item, index) => (
-          <View key={index} style={styles.legendItem}>
-            <View
-              style={[styles.legendColor, { backgroundColor: item.color }]}
-            />
-            <Text style={[styles.legendName, { color: themeColors.text }]}>
-              {item.name}
-            </Text>
-            <Text style={[styles.legendValue, { color: themeColors.text }]}>
-              {currencySymbol}
-              {item.value.toFixed(2)}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
+  const renderCharts = useCallback(
+    () => (
+      <MemoizedPieChart
+        chartData={chartData}
+        stats={stats}
+        currencySymbol={currencySymbol}
+        themeColors={themeColors}
+      />
+    ),
+    [chartData, stats, currencySymbol, themeColors],
   );
 
   const renderTable = () => {
@@ -722,6 +938,152 @@ export default function Report() {
           </View>
         )}
       </ScrollView>
+
+      {/* Month Picker Modal */}
+      <Modal
+        visible={showMonthPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMonthPicker(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowMonthPicker(false)}
+        >
+          <Pressable
+            style={[
+              styles.monthPickerContainer,
+              { backgroundColor: themeColors.card },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.monthPickerHeader}>
+              <Text
+                style={[styles.monthPickerTitle, { color: themeColors.text }]}
+              >
+                Select Period
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowMonthPicker(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color={themeColors.subText} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.monthPickerList}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* All Time Option */}
+              <TouchableOpacity
+                style={[
+                  styles.monthPickerItem,
+                  selectedMonthTitle === "All Time" && {
+                    backgroundColor: themeColors.background,
+                  },
+                  { borderBottomColor: themeColors.border },
+                ]}
+                onPress={() => {
+                  loadAllData();
+                  setShowMonthPicker(false);
+                }}
+              >
+                <Ionicons
+                  name="globe-outline"
+                  size={20}
+                  color={
+                    selectedMonthTitle === "All Time"
+                      ? "#4F46E5"
+                      : themeColors.subText
+                  }
+                />
+                <Text
+                  style={[
+                    styles.monthPickerItemText,
+                    {
+                      color:
+                        selectedMonthTitle === "All Time"
+                          ? "#4F46E5"
+                          : themeColors.text,
+                    },
+                    selectedMonthTitle === "All Time" &&
+                      styles.monthPickerItemTextSelected,
+                  ]}
+                >
+                  All Time
+                </Text>
+                {selectedMonthTitle === "All Time" && (
+                  <Ionicons name="checkmark" size={20} color="#4F46E5" />
+                )}
+              </TouchableOpacity>
+
+              {/* Divider */}
+              <View
+                style={[
+                  styles.monthPickerDivider,
+                  { backgroundColor: themeColors.border },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.monthPickerDividerText,
+                    { color: themeColors.subText },
+                  ]}
+                >
+                  By Month
+                </Text>
+              </View>
+
+              {/* Month Options - Reversed to show latest first */}
+              {[...allMonths].reverse().map((month) => (
+                <TouchableOpacity
+                  key={month}
+                  style={[
+                    styles.monthPickerItem,
+                    selectedMonthTitle === month && {
+                      backgroundColor: themeColors.background,
+                    },
+                    { borderBottomColor: themeColors.border },
+                  ]}
+                  onPress={() => {
+                    loadReportData(month);
+                    setShowMonthPicker(false);
+                  }}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={20}
+                    color={
+                      selectedMonthTitle === month
+                        ? "#4F46E5"
+                        : themeColors.subText
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.monthPickerItemText,
+                      {
+                        color:
+                          selectedMonthTitle === month
+                            ? "#4F46E5"
+                            : themeColors.text,
+                      },
+                      selectedMonthTitle === month &&
+                        styles.monthPickerItemTextSelected,
+                    ]}
+                  >
+                    {month}
+                  </Text>
+                  {selectedMonthTitle === month && (
+                    <Ionicons name="checkmark" size={20} color="#4F46E5" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -753,31 +1115,94 @@ const styles = StyleSheet.create({
     color: "#111827",
     letterSpacing: -0.5,
   },
-  monthList: {
-    paddingHorizontal: 12,
-  },
-  monthPill: {
-    paddingVertical: 6,
+  // Month Dropdown
+  monthDropdown: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 20,
-    marginHorizontal: 4,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    gap: 10,
   },
-  monthPillSelected: {
-    backgroundColor: "#4F46E5",
-    shadowColor: "#4F46E5",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  monthPillText: {
-    fontSize: 14,
+  monthDropdownText: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#4B5563",
+    color: "#1F2937",
   },
-  monthPillTextSelected: {
-    color: "#FFFFFF",
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  monthPickerContainer: {
+    width: "100%",
+    maxWidth: 340,
+    maxHeight: "70%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  monthPickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  monthPickerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  monthPickerList: {
+    maxHeight: 400,
+  },
+  monthPickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+    gap: 12,
+  },
+  monthPickerItemSelected: {
+    backgroundColor: "#EEF2FF",
+  },
+  monthPickerItemText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#1F2937",
+  },
+  monthPickerItemTextSelected: {
+    fontWeight: "600",
+  },
+  monthPickerDivider: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: "#F9FAFB",
+  },
+  monthPickerDividerText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   scrollContent: {
     padding: 16,
@@ -822,7 +1247,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   summaryValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#1F2937",
   },

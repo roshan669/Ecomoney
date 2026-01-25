@@ -1,4 +1,4 @@
-import { input, list, ReportData } from "@/types/types";
+import { input, list } from "@/types/types";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
@@ -17,14 +17,8 @@ interface HomeContextType {
   theme: "light" | "dark";
   toggleTheme: () => void;
   themeColors: typeof Colors.light;
-  netIncome: string;
-  setNetIncome: (value: string) => void;
-  totalGrossIncome: string;
-  setTotalGrossIncome: (value: string) => void;
   expList: list[];
   setExpList: (value: list[]) => void;
-  incList: list[];
-  setIncList: (value: list[]) => void;
   perfer: string;
   setPerfer: (value: string) => void;
   allinputs: input[];
@@ -33,8 +27,6 @@ interface HomeContextType {
   setShowWarning: (value: string | null) => void;
   agree: boolean;
   setAgree: (value: boolean) => void;
-  dataToUpdate: ReportData | null;
-  setDataToUpdate: (value: ReportData | null) => void;
   itemToDelete: string;
   setItemToDelete: (value: string) => void;
   setAddName: (value: string) => void;
@@ -46,6 +38,8 @@ interface HomeContextType {
   inputRefs: React.RefObject<(TextInput | null)[]>;
   currencySymbol: string;
   setCurrencySymbol: (value: string) => void;
+  dbVersion: number;
+  incrementDbVersion: () => void;
 }
 
 const HomeContext = createContext<HomeContextType>({
@@ -54,20 +48,8 @@ const HomeContext = createContext<HomeContextType>({
     console.log("wrap the layot with useHome provider");
   },
   themeColors: Colors.light,
-  netIncome: "0",
-  setNetIncome: () => {
-    console.log("wrap the layot with useHome provider");
-  },
-  totalGrossIncome: "0",
-  setTotalGrossIncome: () => {
-    console.log("wrap the layot with useHome provider");
-  },
   expList: [],
   setExpList: () => {
-    console.log("wrap the layot with useHome provider");
-  },
-  incList: [],
-  setIncList: () => {
     console.log("wrap the layot with useHome provider");
   },
   perfer: "",
@@ -84,10 +66,6 @@ const HomeContext = createContext<HomeContextType>({
   },
   agree: false,
   setAgree: () => {
-    console.log("wrap the layot with useHome provider");
-  },
-  dataToUpdate: null,
-  setDataToUpdate: () => {
     console.log("wrap the layot with useHome provider");
   },
   itemToDelete: "",
@@ -111,25 +89,30 @@ const HomeContext = createContext<HomeContextType>({
   setCurrencySymbol: () => {
     console.log("wrap the layot with useHome provider");
   },
+  dbVersion: 0,
+  incrementDbVersion: () => {
+    console.log("wrap the layot with useHome provider");
+  },
 });
 
 const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   const [theme, setTheme] = useState<"light" | "dark">(
     Appearance.getColorScheme() === "dark" ? "dark" : "light",
   );
-  const [netIncome, setNetIncome] = useState<string>("0");
-  const [totalGrossIncome, setTotalGrossIncome] = useState<string>("0");
   const [expList, setExpList] = useState<list[]>([]);
-  const [incList, setIncList] = useState<list[]>([]);
   const [perfer, setPerfer] = useState<string>("");
   const [allinputs, setAllInputs] = useState<input[]>([]);
   const [addName, setAddName] = useState<string>("");
   const [addAmount, setAddAmount] = useState<string>("");
   const [showWarning, setShowWarning] = useState<string | null>(null);
   const [agree, setAgree] = useState<boolean>(false);
-  const [dataToUpdate, setDataToUpdate] = useState<ReportData | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string>("");
   const [currencySymbol, setCurrencySymbolState] = useState<string>("$");
+  const [dbVersion, setDbVersion] = useState<number>(0);
+
+  const incrementDbVersion = useCallback(() => {
+    setDbVersion(prev => prev + 1);
+  }, []);
 
   const toggleTheme = useCallback(async () => {
     const newTheme = theme === "light" ? "dark" : "light";
@@ -172,7 +155,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
 
   React.useEffect(() => {
     loadCurrency();
-  }, []);
+  }, [loadCurrency]);
 
   const bottomSheetModalRef = React.useRef<BottomSheetModal>(null);
   const inputRefs = useRef<(TextInput | null)[]>([]);
@@ -275,7 +258,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
 
   React.useEffect(() => {
     loadPreferences();
-  }, []);
+  }, [loadPreferences]);
 
   React.useEffect(() => {
     const initialExpList: list[] = [];
@@ -296,36 +279,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     const performOperation = async () => {
       if (!agree) return;
 
-      if (showWarning === "save" && dataToUpdate) {
-        const month = dataToUpdate.month;
-        try {
-          const storedData = await AsyncStorage.getItem(month);
-          const existingData: ReportData[] = storedData
-            ? JSON.parse(storedData)
-            : [];
-
-          const existingEntryIndex = existingData.findIndex(
-            (item) => item.todaysDate === dataToUpdate.todaysDate,
-          );
-
-          if (existingEntryIndex !== -1) {
-            existingData[existingEntryIndex] = dataToUpdate;
-            await AsyncStorage.setItem(month, JSON.stringify(existingData));
-            ToastAndroid.show("Data updated successfully", ToastAndroid.LONG);
-          } else {
-            existingData.push(dataToUpdate);
-            await AsyncStorage.setItem(month, JSON.stringify(existingData));
-            ToastAndroid.show("Data inserted", ToastAndroid.LONG);
-          }
-        } catch (error) {
-          console.error("Error updating data:", error);
-          ToastAndroid.show("Error updating data", ToastAndroid.SHORT);
-        } finally {
-          setDataToUpdate(null);
-          setAgree(false);
-          setShowWarning(null);
-        }
-      } else if (showWarning === "delete" && itemToDelete) {
+      if (showWarning === "delete" && itemToDelete) {
         await handleDelete(itemToDelete);
         setAgree(false);
         setShowWarning(null);
@@ -334,7 +288,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     performOperation();
-  }, [agree, dataToUpdate, showWarning, itemToDelete]);
+  }, [agree, showWarning, itemToDelete, handleDelete]);
 
   const contextValue = useMemo(
     () => ({
@@ -342,7 +296,6 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       handleAdd,
       bottomSheetModalRef,
       itemToDelete,
-      dataToUpdate,
       agree,
       setAddName,
       addName,
@@ -350,47 +303,39 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       setAddAmount,
       allinputs,
       perfer,
-      incList,
       expList,
-      totalGrossIncome,
-      netIncome,
       setAgree,
-      setAddAmount,
       setAllInputs,
-      setDataToUpdate,
       setExpList,
-      setIncList,
       setItemToDelete,
-      setNetIncome,
       setPerfer,
       setShowWarning,
-      setTotalGrossIncome,
       showWarning,
       currencySymbol,
       setCurrencySymbol,
       theme,
       toggleTheme,
       themeColors: Colors[theme],
+      dbVersion,
+      incrementDbVersion,
     }),
     [
       inputRefs,
       handleAdd,
       itemToDelete,
-      dataToUpdate,
       agree,
       addName,
       addAmount,
       allinputs,
       perfer,
-      incList,
       expList,
-      totalGrossIncome,
-      netIncome,
       showWarning,
       currencySymbol,
       setCurrencySymbol,
       theme,
       toggleTheme,
+      dbVersion,
+      incrementDbVersion,
     ],
   );
 

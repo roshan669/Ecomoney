@@ -11,6 +11,7 @@ import { StatusBar } from "expo-status-bar";
 
 import AnimatedSplashScreen from "@/components/AnimatedSplashScreen";
 import * as SplashScreen from "expo-splash-screen";
+import { initializeDatabase } from "@/database/init";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* reloading the app might trigger some race conditions, ignore them */
@@ -20,6 +21,13 @@ function Layout() {
   const [isSplashFinished, setIsSplashFinished] = useState(false);
   const { theme, themeColors } = useContext(HomeContext);
 
+  // Initialize database on app startup
+  useEffect(() => {
+    initializeDatabase().catch((error) => {
+      console.error("Failed to initialize database:", error);
+    });
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: themeColors.background }}>
       <StatusBar
@@ -28,7 +36,7 @@ function Layout() {
         translucent={false}
       />
       <SafeAreaView
-        edges={["bottom", "top"]}
+        edges={["top"]}
         style={{ flex: 1, backgroundColor: themeColors.background }}
       >
         <NavHandler />

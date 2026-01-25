@@ -17,12 +17,18 @@ import {
   StyleSheet,
   StatusBar,
   Animated,
+  Modal,
+  Pressable,
 } from "react-native";
+import DateTimePicker, { useDefaultStyles } from "react-native-ui-datepicker";
+import dayjs from "dayjs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import type { list, ReportData } from "@/types/types";
+import type { list } from "@/types/types";
 import { HomeContext } from "@/hooks/useHome";
+import { useExpenses } from "@/hooks/useExpenses";
+import { useFocusEffect } from "expo-router";
 import BottomSheet from "@/components/BottomSheet";
 import Alert from "@/components/Alert.modal";
 import { getCategoryColor, getCategoryIcon } from "@/constants/categories";
@@ -94,7 +100,17 @@ const ExpenseRow = ({
 };
 
 export default function Index() {
-  const currentDate = new Date();
+  const defaultStyles = useDefaultStyles();
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const isToday = useMemo(() => {
+    const today = new Date();
+    return (
+      selectedDate.getDate() === today.getDate() &&
+      selectedDate.getMonth() === today.getMonth() &&
+      selectedDate.getFullYear() === today.getFullYear()
+    );
+  }, [selectedDate]);
 
   const {
     expList,
@@ -110,27 +126,175 @@ export default function Index() {
     currencySymbol,
     themeColors,
     theme,
+    incrementDbVersion,
   } = useContext(HomeContext)!;
 
-  const [todaysExpenses, setTodaysExpenses] = useState<list[]>([]);
+  // Database hook for expense management
+  const { addExpense, deleteExpenseItem, loadExpenses } = useExpenses();
   const [pendingDeleteItem, setPendingDeleteItem] = useState<list | null>(null);
+  const [dbInitialized, setDbInitialized] = useState(false);
+  const lastSavedHash = useRef<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   // Animation for list entry
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
+  // --- Load expenses from database for the selected date ---
+  const loadExpensesForDate = useCallback(
+    async (date: Date) => {
+      try {
+        // Format date as YYYY-MM-DD using local date components to avoid timezone issues
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const dateStr = `${year}-${month}-${day}`;
+        console.log("Loading expenses from database for date:", dateStr);
+
+        const allExpenses = await loadExpenses();
+        console.log("All expenses loaded:", allExpenses);
+
+        const dateExpenses = allExpenses.filter((exp) => exp.date === dateStr);
+        console.log("Expenses for date:", dateExpenses);
+
+        const listFormat = dateExpenses.map((exp) => ({
+          id: exp.id?.toString(),
+          name: exp.name,
+          value: exp.value,
+          category: exp.category,
+        }));
+
+        console.log("Setting expenses from database:", listFormat);
+        setExpList(listFormat);
+        await AsyncStorage.setItem("perfer", JSON.stringify(listFormat));
+        setAllInputs(listFormat);
+      } catch (error) {
+        console.error("Error loading expenses from database:", error);
+      }
+    },
+    [loadExpenses, setExpList, setAllInputs],
+  );
+
+  // --- Load today's expenses from database on mount and when screen is focused ---
+  useFocusEffect(
+    useCallback(() => {
+      // Always load on first focus, then skip if already loaded
+      if (hasLoadedRef.current) {
+        return;
+      }
+
+      const loadTodaysExpensesFromDb = async () => {
+        try {
+          // Format date as YYYY-MM-DD using local date components
+          const year = selectedDate.getFullYear();
+          const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+          const day = String(selectedDate.getDate()).padStart(2, "0");
+          const today = `${year}-${month}-${day}`;
+          console.log("useFocusEffect: Loading expenses for date:", today);
+
+          // Wait longer initially for database to fully initialize
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+
+          const allExpenses = await loadExpenses();
+          console.log(
+            "useFocusEffect: Got expenses from DB:",
+            allExpenses.length,
+          );
+
+          const dbTodaysExpenses = allExpenses.filter(
+            (exp) => exp.date === today,
+          );
+          console.log(
+            "useFocusEffect: Today's expenses:",
+            dbTodaysExpenses.length,
+          );
+
+          const listFormat = dbTodaysExpenses.map((exp) => ({
+            id: exp.id?.toString(),
+            name: exp.name,
+            value: exp.value,
+            category: exp.category,
+          }));
+
+          // Always set expenses from database (database is source of truth)
+          console.log("useFocusEffect: Setting expenses:", listFormat.length);
+          setExpList(listFormat);
+          await AsyncStorage.setItem("perfer", JSON.stringify(listFormat));
+          setAllInputs(listFormat);
+
+          setDbInitialized(true);
+          hasLoadedRef.current = true;
+        } catch (error) {
+          console.error("Error loading expenses from database:", error);
+          // Don't mark as loaded on error - let backup loader try
+        }
+      };
+
+      loadTodaysExpensesFromDb();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
+  );
+
+  // Backup: Always reload after database is definitely initialized
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      console.log("Backup loader: Reloading today's expenses...");
+      try {
+        const year = selectedDate.getFullYear();
+        const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+        const day = String(selectedDate.getDate()).padStart(2, "0");
+        const today = `${year}-${month}-${day}`;
+
+        const allExpenses = await loadExpenses();
+        console.log("Backup loader: Got expenses:", allExpenses.length);
+
+        const dbTodaysExpenses = allExpenses.filter(
+          (exp) => exp.date === today,
+        );
+
+        const listFormat = dbTodaysExpenses.map((exp) => ({
+          id: exp.id?.toString(),
+          name: exp.name,
+          value: exp.value,
+          category: exp.category,
+        }));
+
+        // Update if we found expenses OR if nothing was loaded yet
+        if (listFormat.length > 0 || !hasLoadedRef.current) {
+          console.log("Backup loader: Setting expenses:", listFormat.length);
+          setExpList(listFormat);
+          await AsyncStorage.setItem("perfer", JSON.stringify(listFormat));
+          setAllInputs(listFormat);
+        }
+
+        hasLoadedRef.current = true;
+        setDbInitialized(true);
+      } catch (error) {
+        console.error("Backup loader error:", error);
+      }
+    }, 2500);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- Daily Reset Logic ---
   useEffect(() => {
     const checkDailyReset = async () => {
       try {
-        const today = currentDate.toDateString();
+        const today = new Date().toDateString();
         const lastResetDate = await AsyncStorage.getItem("LAST_RESET_DATE");
 
         if (lastResetDate !== today) {
-          // New Day Detected: Clear current session expenses
+          // New Day Detected: Clear current session expenses from AsyncStorage
+          // Note: Do NOT clear the database - it persists across days
           await AsyncStorage.setItem("perfer", "[]");
-          setAllInputs([]);
-          setExpList([]);
+
+          // Only reset UI if we haven't loaded from DB yet
+          if (!hasLoadedRef.current) {
+            setAllInputs([]);
+            setExpList([]);
+          }
 
           await AsyncStorage.setItem("LAST_RESET_DATE", today);
         }
@@ -154,6 +318,7 @@ export default function Index() {
         useNativeDriver: true,
       }),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expList.length]);
 
   const handlePresentModalPress = useCallback(() => {
@@ -161,77 +326,109 @@ export default function Index() {
     (bottomSheetModalRef as any).current?.present();
   }, [bottomSheetModalRef, inputRefs]);
 
-  const todaysDate = currentDate.toDateString().slice(4);
-
-  // --- Logic: Save Expenses ---
+  // --- Logic: Save Expenses to Database Only ---
   const saveTodayExpenses = useCallback(
     async (list: list[]) => {
-      const month = todaysDate.slice(0, 3) + " " + todaysDate.slice(7, 11);
+      // Format date as YYYY-MM-DD using local date components
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+      const day = String(selectedDate.getDate()).padStart(2, "0");
+      const dateStr = `${year}-${month}-${day}`;
+      console.log("Saving expenses for date:", dateStr, "Items:", list.length);
 
       try {
-        const storedData = await AsyncStorage.getItem(month);
-        const existingData: ReportData[] = storedData
-          ? JSON.parse(storedData)
-          : [];
-        const idx = existingData.findIndex((i) => i.todaysDate === todaysDate);
+        // Save each NEW expense to database (skip if already has numeric DB ID)
+        for (const item of list) {
+          console.log("Checking item:", {
+            name: item.name,
+            value: item.value,
+            category: item.category,
+            id: item.id,
+            hasName: !!item.name,
+            hasValue: item.value !== undefined && item.value !== null,
+            hasCategory: !!item.category,
+            hasId: !!item.id,
+            isNumericId: item.id ? /^\d+$/.test(item.id) : false,
+          });
 
-        if (!list || list.length === 0) {
-          if (idx !== -1) {
-            existingData.splice(idx, 1);
-            await AsyncStorage.setItem(month, JSON.stringify(existingData));
-            await AsyncStorage.setItem(
-              "LAST_DATA_UPDATE",
-              Date.now().toString(),
+          // Check: has name, has value (including 0), has category
+          // AND either no ID or has a non-numeric (client-generated) ID
+          const hasNumericDbId = item.id && /^\d+$/.test(item.id);
+
+          if (
+            item.name &&
+            item.category &&
+            item.value !== undefined &&
+            item.value !== null &&
+            !hasNumericDbId
+          ) {
+            try {
+              console.log("Adding expense to DB:", item);
+              const result = await addExpense({
+                name: item.name,
+                category: item.category,
+                value: item.value,
+                date: dateStr,
+              });
+              console.log("Expense added successfully:", result);
+              incrementDbVersion(); // Notify that database changed
+            } catch (err) {
+              console.error("Error adding expense to database:", err);
+            }
+          } else {
+            console.log(
+              "Skipping item - already in DB or invalid",
+              item.name,
+              item.value,
+              item.category,
+              item.id,
             );
           }
-          setTodaysExpenses([]);
-          return true;
         }
-
-        const totalExpense = list.reduce(
-          (sum, item) => sum + (item.value || 0),
-          0,
-        );
-        const payload: ReportData = {
-          todaysDate,
-          totalExpense: totalExpense.toString(),
-          month,
-          time: new Date().toISOString(),
-          all: list.map((item) => ({
-            id: item.id,
-            name: item.name,
-            value: item.value || 0,
-            category: item.category || "other",
-          })),
-        };
-
-        if (idx !== -1) {
-          existingData[idx] = payload;
-        } else {
-          existingData.push(payload);
-        }
-        await AsyncStorage.setItem(month, JSON.stringify(existingData));
-        await AsyncStorage.setItem("LAST_DATA_UPDATE", Date.now().toString());
-        setTodaysExpenses(list);
         return true;
       } catch (error) {
         console.error("Error saving expenses:", error);
         return false;
       }
     },
-    [todaysDate],
+    [selectedDate, addExpense, incrementDbVersion],
   );
 
-  // --- Logic: Auto Save ---
+  // --- Logic: Auto Save (without triggering infinite loops) ---
   const hasMounted = useRef(false);
   useEffect(() => {
     if (!hasMounted.current) {
       hasMounted.current = true;
       return;
     }
-    // Save state even if empty (to reflect deletions)
-    saveTodayExpenses(expList);
-  }, [expList, saveTodayExpenses]);
+
+    // Don't save until database is initialized
+    if (!dbInitialized) {
+      return;
+    }
+
+    // Prevent infinite loops by skipping identical payloads
+    const serialized = JSON.stringify(
+      expList.map((item) => ({
+        id: item.id,
+        name: item.name,
+        value: item.value,
+        category: item.category,
+      })),
+    );
+
+    if (serialized === lastSavedHash.current) {
+      return;
+    }
+
+    lastSavedHash.current = serialized;
+
+    // Save to persistence
+    const saveAsync = async () => {
+      await saveTodayExpenses(expList);
+    };
+    saveAsync();
+  }, [expList, dbInitialized]);
 
   // --- Logic: Handlers ---
   const executeDelete = useCallback(
@@ -239,6 +436,13 @@ export default function Index() {
       let updatedExpList;
       if (itemToDelete.id) {
         updatedExpList = expList.filter((item) => item.id !== itemToDelete.id);
+        // Delete from database if it has an ID
+        try {
+          await deleteExpenseItem(parseInt(itemToDelete.id));
+          incrementDbVersion(); // Notify that database changed
+        } catch (err) {
+          console.error("Error deleting from database:", err);
+        }
       } else {
         updatedExpList = expList.filter(
           (item) => item.name !== itemToDelete.name,
@@ -265,10 +469,10 @@ export default function Index() {
         console.error(error);
       }
 
-      await saveTodayExpenses(updatedExpList);
+      // Don't call saveTodayExpenses here - the auto-save useEffect will handle it
       ToastAndroid.show("Deleted", ToastAndroid.SHORT);
     },
-    [expList, saveTodayExpenses, setAllInputs, setExpList],
+    [expList, setAllInputs, setExpList, deleteExpenseItem],
   );
 
   const handleDeleteExpense = useCallback(
@@ -318,7 +522,11 @@ export default function Index() {
           { backgroundColor: themeColors.background },
         ]}
       >
-        <View style={styles.summaryCardContainer}>
+        <TouchableOpacity
+          style={styles.summaryCardContainer}
+          activeOpacity={0.9}
+          onPress={() => setShowDatePicker(true)}
+        >
           <LinearGradient
             colors={["#1207a9", "#4d44af"]}
             start={{ x: 0, y: 0 }}
@@ -326,24 +534,103 @@ export default function Index() {
             style={styles.summaryGradient}
           >
             <View>
-              <Text style={styles.summaryLabel}>Total Expense Today</Text>
+              <Text style={styles.summaryLabel}>
+                {isToday ? "Total Expense Today" : "Total Expense"}
+              </Text>
               <Text style={styles.summaryValue}>
                 {currencySymbol}
                 {totalToday.toFixed(2)}
               </Text>
             </View>
-            <View style={styles.dateBadge}>
+            <TouchableOpacity
+              style={styles.dateBadge}
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.7}
+            >
               <Ionicons name="calendar" size={12} color="#4F46E5" />
               <Text style={styles.dateText}>
-                {currentDate.toLocaleDateString("en-US", {
+                {selectedDate.toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
+                  year:
+                    selectedDate.getFullYear() !== new Date().getFullYear()
+                      ? "numeric"
+                      : undefined,
                 })}
               </Text>
-            </View>
+              <Ionicons name="chevron-down" size={12} color="#4F46E5" />
+            </TouchableOpacity>
           </LinearGradient>
-        </View>
+        </TouchableOpacity>
       </View>
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <Pressable
+          style={styles.datePickerOverlay}
+          onPress={() => setShowDatePicker(false)}
+        >
+          <Pressable
+            style={[
+              styles.datePickerContainer,
+              { backgroundColor: themeColors.card },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.datePickerHeader}>
+              <Text
+                style={[styles.datePickerTitle, { color: themeColors.text }]}
+              >
+                Select Date
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color={themeColors.subText} />
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              mode="single"
+              date={selectedDate}
+              onChange={(params) => {
+                if (params.date) {
+                  const newDate = dayjs(params.date).toDate();
+                  setSelectedDate(newDate);
+                  loadExpensesForDate(newDate);
+                  setShowDatePicker(false);
+                }
+              }}
+              styles={{
+                ...defaultStyles,
+                today: { borderColor: "#4F46E5", borderWidth: 1 },
+                selected: { backgroundColor: "#4F46E5" },
+                selected_label: { color: "#FFFFFF" },
+                day_label: { color: themeColors.text },
+                weekday_label: { color: themeColors.subText },
+                month_selector_label: { color: themeColors.text },
+                year_selector_label: { color: themeColors.text },
+              }}
+            />
+            <TouchableOpacity
+              style={styles.todayButton}
+              onPress={() => {
+                const today = new Date();
+                setSelectedDate(today);
+                loadExpensesForDate(today);
+                setShowDatePicker(false);
+              }}
+            >
+              <Text style={styles.todayButtonText}>Go to Today</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Expenses List */}
       <KeyboardAvoidingView
@@ -362,7 +649,9 @@ export default function Index() {
               }}
             >
               <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
-                Today&rsquo;s Transactions
+                {isToday
+                  ? "Today's Transactions"
+                  : `Transactions for ${selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
               </Text>
               <View
                 style={[
@@ -395,9 +684,13 @@ export default function Index() {
               <View style={styles.emptyIconBg}>
                 <Ionicons name="wallet-outline" size={32} color="#9CA3AF" />
               </View>
-              <Text style={styles.emptyText}>No expenses today</Text>
+              <Text style={styles.emptyText}>
+                {isToday ? "No expenses today" : "No expenses for this date"}
+              </Text>
               <Text style={styles.emptySubText}>
-                Tap + to add a new expense
+                {isToday
+                  ? "Tap + to add a new expense"
+                  : "Select today to add expenses"}
               </Text>
             </View>
           )}
@@ -609,5 +902,52 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
+  },
+  // Date Picker Modal Styles
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  datePickerContainer: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  datePickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  todayButton: {
+    backgroundColor: "#4F46E5",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  todayButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

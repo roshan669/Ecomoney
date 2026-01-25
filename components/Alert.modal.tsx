@@ -3,7 +3,6 @@ import React, { useContext } from "react";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { HomeContext } from "@/hooks/useHome";
-import { Colors } from "@/constants/theme";
 
 interface AlertProps {
   title: string;
@@ -15,7 +14,6 @@ export default function Alert({ title, description }: AlertProps) {
     itemToDelete,
     setShowWarning,
     setAgree,
-    setDataToUpdate,
     showWarning,
     themeColors,
     theme,
@@ -28,18 +26,13 @@ export default function Alert({ title, description }: AlertProps) {
       onRequestClose={() => {
         setShowWarning(null);
         setAgree(false); // Ensure agree is false if closed without choice
-        setDataToUpdate!(null); // Clear pending data
       }}
       statusBarTranslucent
     >
       <BlurView
         style={styles.modalcontainer}
-        intensity={theme === "dark" ? 50 : 100}
-        tint={
-          theme === "dark"
-            ? "systemChromeMaterialDark"
-            : "systemChromeMaterialLight"
-        }
+        intensity={50}
+        tint={"systemChromeMaterialDark"}
       >
         <View
           style={[styles.warningContent, { backgroundColor: themeColors.card }]}
@@ -70,8 +63,6 @@ export default function Alert({ title, description }: AlertProps) {
               onPress={() => {
                 setShowWarning(null);
                 setAgree(false); // Explicitly set agree to false
-                setDataToUpdate!(null); // Clear pending data
-                // ToastAndroid.show("Operation cancelled", ToastAndroid.SHORT);
               }}
             >
               <Text

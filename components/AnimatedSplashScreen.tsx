@@ -1,9 +1,8 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
+import { View, StyleSheet, Dimensions, Text } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   withSequence,
   withDelay,
@@ -12,8 +11,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import * as SplashScreen from "expo-splash-screen";
-
-const { width, height } = Dimensions.get("window");
 
 interface AnimatedSplashScreenProps {
   onFinish: () => void;
@@ -32,37 +29,37 @@ export default function AnimatedSplashScreen({
     // Hide native splash screen once we are mounted
     SplashScreen.hideAsync();
     // 1. Wallet pops up
-    walletScale.value = withTiming(1, {
+    walletScale.value = withTiming(1.5, {
       duration: 800,
       easing: Easing.out(Easing.cubic),
     });
 
     // 2. Coin drops after a slight delay
-    // Coin opacity fades out when it goes "in"
     coinOpacity.value = withDelay(
-      500,
+      600,
       withSequence(
-        withTiming(1, { duration: 100 }), // Fade in
-        withDelay(600, withTiming(0, { duration: 200 })), // Fade out
+        withTiming(1, { duration: 400 }), // Fade in quickly
+        withDelay(800, withTiming(0, { duration: 300 })), // Fade out after showing
       ),
     );
 
+    // Coin falls from top onto wallet (travels ~220px to land on wallet)
     coinTranslateY.value = withDelay(
-      500,
+      600,
       withSequence(
-        withTiming(0, { duration: 600, easing: Easing.bounce }), // Drop in
-        withDelay(500, withTiming(40, { duration: 300 })), // Slide down/disappear into wallet
+        withTiming(450, { duration: 1000, easing: Easing.ease }), // Drop down with bounce to land on wallet
+        // withDelay(500, withTiming(250, { duration: 400 })), // Continue falling/disappearing
       ),
     );
 
     // 3. Finish animation - fade out container
     containerOpacity.value = withDelay(
-      2000,
+      2500,
       withTiming(0, { duration: 500 }, (finished) => {
         runOnJS(onFinish)();
       }),
     );
-  }, []);
+  }, [onFinish]);
 
   const walletStyle = useAnimatedStyle(() => {
     return {
@@ -74,9 +71,7 @@ export default function AnimatedSplashScreen({
     return {
       transform: [{ translateY: coinTranslateY.value }],
       opacity: coinOpacity.value,
-      zIndex: -1, // Behind the front of the wallet?
-      // Actually we overlay it, but visual trickery is easier.
-      // Let's just drop it "on top" or "into".
+      zIndex: 0, // On top of wallet for visibility
     };
   });
 
@@ -99,6 +94,8 @@ export default function AnimatedSplashScreen({
           <Ionicons name="wallet" size={80} color="#fff" />
         </Animated.View>
       </View>
+
+      <Text style={styles.appName}>EcoMoney</Text>
     </Animated.View>
   );
 }
@@ -114,6 +111,7 @@ const styles = StyleSheet.create({
   center: {
     alignItems: "center",
     justifyContent: "center",
+    flex: 1,
   },
   wallet: {
     zIndex: 2,
@@ -129,7 +127,7 @@ const styles = StyleSheet.create({
   },
   coin: {
     position: "absolute",
-    top: -50, // Start above
+    top: -80, // Start further above so it drops onto wallet
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -138,6 +136,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 2,
     borderColor: "#FFD700",
-    zIndex: 1,
+    zIndex: 10,
+  },
+  appName: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#fff",
+    position: "absolute",
+    bottom: 100,
   },
 });
