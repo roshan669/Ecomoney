@@ -63,6 +63,7 @@ const NavHandler = () => {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+      <Stack.Screen name="category-expenses" options={{ headerShown: false }} />
     </Stack>
   );
 };

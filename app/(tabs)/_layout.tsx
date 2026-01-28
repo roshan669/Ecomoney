@@ -19,7 +19,6 @@ export default function TabLayout() {
           backgroundColor: themeColors.background,
         },
         headerTintColor: themeColors.text,
-        // animation: "fade", // Removed to prevent shadow artifacts on Android
       }}
     >
       <Tabs.Screen

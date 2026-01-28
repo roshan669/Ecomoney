@@ -6,11 +6,12 @@ import Animated, {
   withTiming,
   withSequence,
   withDelay,
-  runOnJS,
   Easing,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import * as SplashScreen from "expo-splash-screen";
+
+import { scheduleOnRN } from "react-native-worklets";
 
 interface AnimatedSplashScreenProps {
   onFinish: () => void;
@@ -36,27 +37,27 @@ export default function AnimatedSplashScreen({
 
     // 2. Coin drops after a slight delay
     coinOpacity.value = withDelay(
-      600,
+      300,
       withSequence(
         withTiming(1, { duration: 400 }), // Fade in quickly
-        withDelay(800, withTiming(0, { duration: 300 })), // Fade out after showing
+        withDelay(500, withTiming(0, { duration: 300 })), // Fade out after showing
       ),
     );
 
     // Coin falls from top onto wallet (travels ~220px to land on wallet)
     coinTranslateY.value = withDelay(
-      600,
+      300,
       withSequence(
-        withTiming(450, { duration: 1000, easing: Easing.ease }), // Drop down with bounce to land on wallet
+        withTiming(450, { duration: 500, easing: Easing.linear }), // Drop down with bounce to land on wallet
         // withDelay(500, withTiming(250, { duration: 400 })), // Continue falling/disappearing
       ),
     );
 
     // 3. Finish animation - fade out container
     containerOpacity.value = withDelay(
-      2500,
+      750,
       withTiming(0, { duration: 500 }, (finished) => {
-        runOnJS(onFinish)();
+        scheduleOnRN(onFinish);
       }),
     );
   }, [onFinish]);

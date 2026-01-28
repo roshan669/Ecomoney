@@ -612,9 +612,29 @@ export default function Index() {
                 selected: { backgroundColor: "#4F46E5" },
                 selected_label: { color: "#FFFFFF" },
                 day_label: { color: themeColors.text },
-                weekday_label: { color: themeColors.subText },
+                weekday_label: { color: themeColors.text },
                 month_selector_label: { color: themeColors.text },
                 year_selector_label: { color: themeColors.text },
+                selected_year: { backgroundColor: "#4F46E5" },
+                selected_month: { backgroundColor: "#4F46E5" },
+                year: {
+                  // borderWidth: 1,
+                  color: "#fff",
+                  backgroundColor:
+                    theme === "dark"
+                      ? themeColors.subText
+                      : themeColors.seconday,
+                  borderRadius: 12,
+                },
+                month: {
+                  // borderWidth: 1,
+                  color: "#fff",
+                  backgroundColor:
+                    theme === "dark"
+                      ? themeColors.subText
+                      : themeColors.seconday,
+                  borderRadius: 12,
+                },
               }}
             />
             <TouchableOpacity
