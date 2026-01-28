@@ -20,7 +20,7 @@ import React, {
 } from "react";
 import { Table, Row } from "react-native-table-component";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { PieChart as GiftedPieChart } from "react-native-gifted-charts";
 import type { ReportData } from "@/types/types";
 import Menu from "@/components/Menu.modal";
@@ -37,11 +37,13 @@ const MemoizedPieChart = memo(
     stats,
     currencySymbol,
     themeColors,
+    onSlicePress,
   }: {
     chartData: any[];
     stats: any;
     currencySymbol: string;
     themeColors: any;
+    onSlicePress?: (categoryKey: string) => void;
   }) => (
     <View style={[styles.chartSection, { backgroundColor: themeColors.card }]}>
       <View style={styles.chartWrapper}>
@@ -53,6 +55,15 @@ const MemoizedPieChart = memo(
           showText
           textColor="#fff"
           innerCircleColor={themeColors.card}
+          focusOnPress
+          onPress={(item: any) => {
+            if (onSlicePress && item) {
+              const key = (item as any).categoryKey || (item as any).label;
+              if (typeof key === "string" && key.length > 0) {
+                onSlicePress(key);
+              }
+            }
+          }}
           centerLabelComponent={() => (
             <View style={styles.donutCenter}>
               <Text style={[styles.donutTitle, { color: themeColors.subText }]}>
@@ -200,6 +211,8 @@ export default function Report() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const { currencySymbol, themeColors, theme, dbVersion } =
     useContext(HomeContext);
+
+  const router = useRouter();
 
   // Database hook for expense analytics
   const { loadExpenses } = useExpenses();
@@ -581,6 +594,7 @@ export default function Report() {
       topCategory: topCat ? topCat[0] : "N/A",
       topCatValue: topCat ? topCat[1].toFixed(2) : "0",
       categoryData: sortedCats.map(([k, v], i) => ({
+        key: k,
         name: k.charAt(0).toUpperCase() + k.slice(1),
         value: v,
         color: getCategoryColor(k),
@@ -591,13 +605,31 @@ export default function Report() {
   // --- Chart Data ---
   const chartData = useMemo(() => {
     const total = parseFloat(stats.total);
-    return stats.categoryData.map((d) => ({
-      value: d.value,
-      color: d.color,
-      text: total > 0 ? `${Math.round((d.value / total) * 100)}%` : "",
-      label: d.name,
-    }));
+    return stats.categoryData.map((d: any) => {
+      const key = d.key || d.name?.toLowerCase?.() || "other";
+      return {
+        value: d.value,
+        color: d.color,
+        text: total > 0 ? `${Math.round((d.value / total) * 100)}%` : "",
+        label: d.name,
+        categoryKey: key,
+      };
+    });
   }, [stats]);
+
+  const handleSlicePress = useCallback(
+    (categoryKey: string) => {
+      if (!categoryKey) return;
+      router.push({
+        pathname: "/category-expenses",
+        params: {
+          category: categoryKey.toLowerCase(),
+          period: selectedMonthTitle,
+        },
+      });
+    },
+    [router, selectedMonthTitle],
+  );
 
   // --- HTML Generation ---
   const generateHTML = useCallback(() => {
@@ -830,9 +862,10 @@ export default function Report() {
         stats={stats}
         currencySymbol={currencySymbol}
         themeColors={themeColors}
+        onSlicePress={handleSlicePress}
       />
     ),
-    [chartData, stats, currencySymbol, themeColors],
+    [chartData, stats, currencySymbol, themeColors, handleSlicePress],
   );
 
   const renderTable = () => {

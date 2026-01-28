@@ -37,10 +37,10 @@ export default function AnimatedSplashScreen({
 
     // 2. Coin drops after a slight delay
     coinOpacity.value = withDelay(
-      300,
+      200,
       withSequence(
         withTiming(1, { duration: 400 }), // Fade in quickly
-        withDelay(500, withTiming(0, { duration: 300 })), // Fade out after showing
+        withDelay(250, withTiming(0, { duration: 0 })), // Fade out after showing
       ),
     );
 
@@ -48,8 +48,8 @@ export default function AnimatedSplashScreen({
     coinTranslateY.value = withDelay(
       300,
       withSequence(
-        withTiming(450, { duration: 500, easing: Easing.linear }), // Drop down with bounce to land on wallet
-        // withDelay(500, withTiming(250, { duration: 400 })), // Continue falling/disappearing
+        withTiming(450, { duration: 500, easing: Easing.linear }), // Drop down to land on wallet
+        // withDelay(50, withTiming(250, { duration: 50 })), // Continue falling/disappearing
       ),
     );
 
