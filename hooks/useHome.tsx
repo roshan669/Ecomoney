@@ -12,6 +12,7 @@ import React, {
 import { ToastAndroid, Appearance } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 import { Colors } from "@/constants/theme";
+import { addExpense } from "@/database/queries";
 
 interface HomeContextType {
   theme: "light" | "dark";
@@ -40,6 +41,10 @@ interface HomeContextType {
   setCurrencySymbol: (value: string) => void;
   dbVersion: number;
   incrementDbVersion: () => void;
+  dbInitialized: boolean;
+  setDbInitialized: (value: boolean) => void;
+  selectedDate: Date;
+  setSelectedDate: (value: Date) => void;
 }
 
 const HomeContext = createContext<HomeContextType>({
@@ -93,6 +98,14 @@ const HomeContext = createContext<HomeContextType>({
   incrementDbVersion: () => {
     console.log("wrap the layot with useHome provider");
   },
+  dbInitialized: false,
+  setDbInitialized: () => {
+    console.log("wrap the layot with useHome provider");
+  },
+  selectedDate: new Date(),
+  setSelectedDate: () => {
+    console.log("wrap the layot with useHome provider");
+  },
 });
 
 const HomeProvider = ({ children }: { children: React.ReactNode }) => {
@@ -109,9 +122,15 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   const [itemToDelete, setItemToDelete] = useState<string>("");
   const [currencySymbol, setCurrencySymbolState] = useState<string>("$");
   const [dbVersion, setDbVersion] = useState<number>(0);
+  const [dbInitialized, setDbInitialized] = useState<boolean>(false);
+  const [selectedDate, setSelectedDateState] = useState<Date>(new Date());
+
+  const setSelectedDate = useCallback((date: Date) => {
+    setSelectedDateState(date);
+  }, []);
 
   const incrementDbVersion = useCallback(() => {
-    setDbVersion(prev => prev + 1);
+    setDbVersion((prev) => prev + 1);
   }, []);
 
   const toggleTheme = useCallback(async () => {
@@ -215,6 +234,15 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const handleAdd = useCallback(async () => {
+    // Check if database is initialized
+    if (!dbInitialized) {
+      ToastAndroid.show(
+        "Database is initializing, please try again",
+        ToastAndroid.SHORT,
+      );
+      return;
+    }
+
     const trimmedName = addName.trim();
     const trimmedAmount = addAmount.trim();
 
@@ -228,21 +256,21 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     const selectedCategory = perfer === "" ? "other" : perfer;
 
     try {
-      const storedData = await AsyncStorage.getItem("perfer");
-      const existingData: input[] = storedData ? JSON.parse(storedData) : [];
+      // Save to the selected date, not today
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+      const day = String(selectedDate.getDate()).padStart(2, "0");
+      const dateStr = `${year}-${month}-${day}`;
 
-      const newData: input = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      await addExpense({
         name: trimmedName,
         category: selectedCategory,
         value: amountNumber,
-      };
+        date: dateStr,
+      });
 
-      const updatedInputs = [...existingData, newData];
-      await AsyncStorage.setItem("perfer", JSON.stringify(updatedInputs));
-
-      // Update UI lists immediately
-      setAllInputs(updatedInputs);
+      // Notify that database changed
+      incrementDbVersion();
 
       // Reset modal state
       setAddName("");
@@ -251,10 +279,18 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       handleSheetClose();
       ToastAndroid.show("Expense added successfully", ToastAndroid.SHORT);
     } catch (error) {
-      console.error("Error saving preference:", error);
-      ToastAndroid.show("Error saving preference", ToastAndroid.SHORT);
+      console.error("Error saving expense:", error);
+      ToastAndroid.show("Error saving expense", ToastAndroid.SHORT);
     }
-  }, [addName, addAmount, perfer, setAllInputs, handleSheetClose]);
+  }, [
+    addName,
+    addAmount,
+    perfer,
+    handleSheetClose,
+    incrementDbVersion,
+    dbInitialized,
+    selectedDate,
+  ]);
 
   React.useEffect(() => {
     loadPreferences();
@@ -318,6 +354,10 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       themeColors: Colors[theme],
       dbVersion,
       incrementDbVersion,
+      dbInitialized,
+      setDbInitialized,
+      selectedDate,
+      setSelectedDate,
     }),
     [
       inputRefs,
@@ -336,6 +376,10 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       toggleTheme,
       dbVersion,
       incrementDbVersion,
+      dbInitialized,
+      setDbInitialized,
+      selectedDate,
+      setSelectedDate,
     ],
   );
 

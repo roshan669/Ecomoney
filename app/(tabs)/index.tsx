@@ -101,16 +101,6 @@ const ExpenseRow = ({
 
 export default function Index() {
   const defaultStyles = useDefaultStyles();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const isToday = useMemo(() => {
-    const today = new Date();
-    return (
-      selectedDate.getDate() === today.getDate() &&
-      selectedDate.getMonth() === today.getMonth() &&
-      selectedDate.getFullYear() === today.getFullYear()
-    );
-  }, [selectedDate]);
 
   const {
     expList,
@@ -127,13 +117,27 @@ export default function Index() {
     themeColors,
     theme,
     incrementDbVersion,
+    setDbInitialized,
+    dbInitialized,
+    dbVersion,
+    selectedDate,
+    setSelectedDate,
   } = useContext(HomeContext)!;
 
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const isToday = useMemo(() => {
+    const today = new Date();
+    return (
+      selectedDate.getDate() === today.getDate() &&
+      selectedDate.getMonth() === today.getMonth() &&
+      selectedDate.getFullYear() === today.getFullYear()
+    );
+  }, [selectedDate]);
+
   // Database hook for expense management
-  const { addExpense, deleteExpenseItem, loadExpenses } = useExpenses();
+  const { deleteExpenseItem, loadExpenses } = useExpenses();
   const [pendingDeleteItem, setPendingDeleteItem] = useState<list | null>(null);
-  const [dbInitialized, setDbInitialized] = useState(false);
-  const lastSavedHash = useRef<string | null>(null);
+
   const hasLoadedRef = useRef(false);
 
   // Animation for list entry
@@ -326,109 +330,44 @@ export default function Index() {
     (bottomSheetModalRef as any).current?.present();
   }, [bottomSheetModalRef, inputRefs]);
 
-  // --- Logic: Save Expenses to Database Only ---
-  const saveTodayExpenses = useCallback(
-    async (list: list[]) => {
-      // Format date as YYYY-MM-DD using local date components
-      const year = selectedDate.getFullYear();
-      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
-      const day = String(selectedDate.getDate()).padStart(2, "0");
-      const dateStr = `${year}-${month}-${day}`;
-      console.log("Saving expenses for date:", dateStr, "Items:", list.length);
+  // --- Logic: Reload expenses when database changes ---
+  useEffect(() => {
+    const reloadExpenses = async () => {
+      if (!dbInitialized) return;
 
       try {
-        // Save each NEW expense to database (skip if already has numeric DB ID)
-        for (const item of list) {
-          console.log("Checking item:", {
-            name: item.name,
-            value: item.value,
-            category: item.category,
-            id: item.id,
-            hasName: !!item.name,
-            hasValue: item.value !== undefined && item.value !== null,
-            hasCategory: !!item.category,
-            hasId: !!item.id,
-            isNumericId: item.id ? /^\d+$/.test(item.id) : false,
-          });
+        const year = selectedDate.getFullYear();
+        const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+        const day = String(selectedDate.getDate()).padStart(2, "0");
+        const dateStr = `${year}-${month}-${day}`;
 
-          // Check: has name, has value (including 0), has category
-          // AND either no ID or has a non-numeric (client-generated) ID
-          const hasNumericDbId = item.id && /^\d+$/.test(item.id);
+        const allExpenses = await loadExpenses();
+        const dateExpenses = allExpenses.filter((exp) => exp.date === dateStr);
 
-          if (
-            item.name &&
-            item.category &&
-            item.value !== undefined &&
-            item.value !== null &&
-            !hasNumericDbId
-          ) {
-            try {
-              console.log("Adding expense to DB:", item);
-              const result = await addExpense({
-                name: item.name,
-                category: item.category,
-                value: item.value,
-                date: dateStr,
-              });
-              console.log("Expense added successfully:", result);
-              incrementDbVersion(); // Notify that database changed
-            } catch (err) {
-              console.error("Error adding expense to database:", err);
-            }
-          } else {
-            console.log(
-              "Skipping item - already in DB or invalid",
-              item.name,
-              item.value,
-              item.category,
-              item.id,
-            );
-          }
-        }
-        return true;
+        const listFormat = dateExpenses.map((exp) => ({
+          id: exp.id?.toString(),
+          name: exp.name,
+          value: exp.value,
+          category: exp.category,
+        }));
+
+        setExpList(listFormat);
+        await AsyncStorage.setItem("perfer", JSON.stringify(listFormat));
+        setAllInputs(listFormat);
       } catch (error) {
-        console.error("Error saving expenses:", error);
-        return false;
+        console.error("Error reloading expenses:", error);
       }
-    },
-    [selectedDate, addExpense, incrementDbVersion],
-  );
-
-  // --- Logic: Auto Save (without triggering infinite loops) ---
-  const hasMounted = useRef(false);
-  useEffect(() => {
-    if (!hasMounted.current) {
-      hasMounted.current = true;
-      return;
-    }
-
-    // Don't save until database is initialized
-    if (!dbInitialized) {
-      return;
-    }
-
-    // Prevent infinite loops by skipping identical payloads
-    const serialized = JSON.stringify(
-      expList.map((item) => ({
-        id: item.id,
-        name: item.name,
-        value: item.value,
-        category: item.category,
-      })),
-    );
-
-    if (serialized === lastSavedHash.current) {
-      return;
-    }
-
-    lastSavedHash.current = serialized;
-
-    // Save to persistence
-    const saveAsync = async () => {
-      await saveTodayExpenses(expList);
     };
-    saveAsync();
-  }, [expList, dbInitialized]);
+
+    reloadExpenses();
+  }, [
+    dbVersion,
+    selectedDate,
+    loadExpenses,
+    setExpList,
+    setAllInputs,
+    dbInitialized,
+  ]);
 
   // --- Logic: Handlers ---
   const executeDelete = useCallback(
@@ -472,7 +411,7 @@ export default function Index() {
       // Don't call saveTodayExpenses here - the auto-save useEffect will handle it
       ToastAndroid.show("Deleted", ToastAndroid.SHORT);
     },
-    [expList, setAllInputs, setExpList, deleteExpenseItem],
+    [expList, setAllInputs, setExpList, deleteExpenseItem, incrementDbVersion],
   );
 
   const handleDeleteExpense = useCallback(
@@ -657,6 +596,20 @@ export default function Index() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
+        <Text
+          style={[
+            styles.sectionTitle,
+            {
+              color: themeColors.text,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+            },
+          ]}
+        >
+          {isToday
+            ? "Today's Transactions"
+            : `Transactions for ${selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+        </Text>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -668,11 +621,6 @@ export default function Index() {
                 transform: [{ translateY: slideAnim }],
               }}
             >
-              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
-                {isToday
-                  ? "Today's Transactions"
-                  : `Transactions for ${selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
-              </Text>
               <View
                 style={[
                   styles.listContainer,
@@ -794,11 +742,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 16,
     paddingBottom: 100, // Space for FAB
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     color: "#1F2937",
     marginBottom: 12,
@@ -807,12 +755,12 @@ const styles = StyleSheet.create({
   listContainer: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    paddingVertical: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    // paddingVertical: 4,
+    // shadowColor: "#000",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.05,
+    // shadowRadius: 8,
+    // elevation: 2,
   },
   separator: {
     height: 1,

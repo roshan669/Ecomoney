@@ -50,8 +50,8 @@ const MemoizedPieChart = memo(
         <GiftedPieChart
           data={chartData}
           donut
-          radius={110}
-          innerRadius={60}
+          radius={150}
+          innerRadius={80}
           showText
           textColor="#fff"
           innerCircleColor={themeColors.card}
@@ -607,10 +607,12 @@ export default function Report() {
     const total = parseFloat(stats.total);
     return stats.categoryData.map((d: any) => {
       const key = d.key || d.name?.toLowerCase?.() || "other";
+      const percentage = total > 0 ? Math.round((d.value / total) * 100) : 0;
       return {
         value: d.value,
         color: d.color,
-        text: total > 0 ? `${Math.round((d.value / total) * 100)}%` : "",
+        text: percentage < 2 ? percentage : percentage + "%",
+        textSize: percentage < 3 ? 8 : percentage < 10 ? 10 : 17,
         label: d.name,
         categoryKey: key,
       };
