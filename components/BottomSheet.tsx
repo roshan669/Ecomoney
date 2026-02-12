@@ -1,5 +1,11 @@
-import { View, Text, TouchableOpacity, BackHandler } from "react-native";
-import React, { useContext, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  BackHandler,
+  Button,
+} from "react-native";
+import React, { useContext, useEffect, useState } from "react";
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
@@ -18,6 +24,7 @@ import {
 } from "@/constants/categories";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { loadModel, predictCategory } from "@/utils/ExpenseClassifier";
 
 export default function BottomSheet() {
   const amountInputRef = React.useRef<any>(null);
@@ -32,6 +39,8 @@ export default function BottomSheet() {
     // restSpeedThreshold: 0.1,
     stiffness: 350,
   });
+  const [prediction, setPrediction] = useState("");
+  const [isPredicting, setIsPredicting] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -64,6 +73,32 @@ export default function BottomSheet() {
     currencySymbol,
     themeColors,
   } = useContext(HomeContext);
+
+  useEffect(() => {
+    loadModel();
+  }, []);
+
+  const handlePredict = async () => {
+    if (!addName.trim() || isPredicting) return;
+    setIsPredicting(true);
+    setPrediction("Analyzing...");
+    try {
+      const result = await predictCategory(addName);
+      setPrediction(`Suggested: ${result.category}`);
+      // Auto-select category if it matches
+      const matchedCategory = expenseCategoriesList.find(
+        (cat) => cat.label.toLowerCase() === result.category.toLowerCase(),
+      );
+      if (matchedCategory) {
+        setPerfer(matchedCategory.key);
+      }
+    } catch (error) {
+      console.error("❌ Prediction failed:", error);
+      setPrediction("Prediction failed. Try again.");
+    } finally {
+      setIsPredicting(false);
+    }
+  };
 
   const handeleAddExpense = () => {
     if (!addName.trim()) {
@@ -148,6 +183,8 @@ export default function BottomSheet() {
               placeholder="e.g., Groceries, Taxi, Dinner"
               value={addName}
               onChangeText={setAddName}
+              onFocus={() => setNameError("")}
+              onBlur={handlePredict}
               style={[
                 styles.modalInput,
                 {
@@ -161,20 +198,18 @@ export default function BottomSheet() {
               returnKeyType="next"
               onSubmitEditing={() => amountInputRef.current?.focus()}
             />
+            {nameError ? (
+              <Text
+                style={{
+                  color: "#EF4444",
+                  fontSize: 12,
+                  marginTop: 8,
+                }}
+              >
+                {nameError}
+              </Text>
+            ) : null}
           </View>
-          {nameError ? (
-            <Text
-              style={{
-                color: "#EF4444",
-                fontSize: 12,
-                marginBottom: 24,
-                width: "100%",
-                paddingHorizontal: 4,
-              }}
-            >
-              {nameError}
-            </Text>
-          ) : null}
 
           <View style={styles.modalInputContainer}>
             <Text style={[styles.inputLabel, { color: themeColors.subText }]}>
@@ -182,6 +217,7 @@ export default function BottomSheet() {
             </Text>
             <BottomSheetTextInput
               ref={amountInputRef}
+              onFocus={() => setAmountError("")}
               placeholder={`${currencySymbol}0`}
               value={addAmount}
               onChangeText={(text) => {
@@ -200,25 +236,35 @@ export default function BottomSheet() {
               placeholderTextColor={themeColors.subText}
               returnKeyType="done"
             />
+            {amountError ? (
+              <Text
+                style={{
+                  color: "#EF4444",
+                  fontSize: 12,
+                  marginTop: 8,
+                }}
+              >
+                {amountError}
+              </Text>
+            ) : null}
           </View>
-          {amountError ? (
-            <Text
-              style={{
-                color: "#EF4444",
-                fontSize: 12,
-                marginBottom: 24,
-                width: "100%",
-                paddingHorizontal: 4,
-              }}
-            >
-              {amountError}
-            </Text>
-          ) : null}
 
           <View style={styles.typeSelectionContainer}>
             <Text style={[styles.inputLabel, { color: themeColors.subText }]}>
               Category
             </Text>
+            {prediction && (
+              <Text
+                style={{
+                  color: themeColors.subText,
+                  marginVertical: 5,
+                  fontSize: 18,
+                  fontWeight: "bold",
+                }}
+              >
+                {prediction}
+              </Text>
+            )}
             <View
               style={{
                 flexDirection: "row",
@@ -286,6 +332,7 @@ export default function BottomSheet() {
                 setPerfer("");
                 setNameError("");
                 setAmountError("");
+                setPrediction("");
               }}
             >
               <Text

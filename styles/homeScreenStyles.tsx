@@ -99,7 +99,9 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#212529",
   },
-  modalInputContainer: {},
+  modalInputContainer: {
+    marginBottom: 20,
+  },
   inputLabel: {
     fontSize: 14,
     fontWeight: "600",

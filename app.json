@@ -27,10 +27,11 @@
       "output": "static",
       "favicon": "./assets/images/adaptive-icon.png"
     },
-    "plugins": ["expo-router"],
+    "plugins": ["expo-router", "react-native-fast-tflite"],
     "splash": {
+      "image": "./assets/images/noBgLogo.png",
       "backgroundColor": "#4F46E5",
-      "resizeMode": "cover"
+      "resizeMode": "contain"
     },
     "experiments": {
       "typedRoutes": true,
