@@ -22,3 +22,4 @@ This React Native application helps you to easily track your daily & monthly exp
 - React Native Async Storage
 - Expo Print
 - React Native Gift Charts
+- react-native-fast-tflite
