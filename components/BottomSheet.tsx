@@ -25,6 +25,7 @@ import {
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadModel, predictCategory } from "@/utils/ExpenseClassifier";
+import { saveCategoryCorrection, getLearnedCategory } from "@/utils/CategoryLearning";
 
 export default function BottomSheet() {
   const amountInputRef = React.useRef<any>(null);
@@ -41,6 +42,7 @@ export default function BottomSheet() {
   });
   const [prediction, setPrediction] = useState("");
   const [isPredicting, setIsPredicting] = useState(false);
+  const [initialPrediction, setInitialPrediction] = useState("");
 
   useFocusEffect(
     React.useCallback(() => {
@@ -83,11 +85,22 @@ export default function BottomSheet() {
     setIsPredicting(true);
     setPrediction("Analyzing...");
     try {
-      const result = await predictCategory(addName);
-      setPrediction(`Suggested: ${result.category}`);
-      // Auto-select category if it matches
+      // Check learned corrections first
+      const learned = await getLearnedCategory(addName);
+      let categoryToUse = learned;
+      
+      if (!learned) {
+        // Use ML model if no learned correction
+        const result = await predictCategory(addName);
+        categoryToUse = result.category;
+      }
+      
+      setPrediction(`Suggested: ${categoryToUse}`);
+      setInitialPrediction(categoryToUse || "");
+      
+      // Auto-select category
       const matchedCategory = expenseCategoriesList.find(
-        (cat) => cat.label.toLowerCase() === result.category.toLowerCase(),
+        (cat) => cat.label.toLowerCase() === categoryToUse?.toLowerCase(),
       );
       if (matchedCategory) {
         setPerfer(matchedCategory.key);
@@ -100,7 +113,7 @@ export default function BottomSheet() {
     }
   };
 
-  const handeleAddExpense = () => {
+  const handeleAddExpense = async () => {
     if (!addName.trim()) {
       setNameError("Please enter a expense name.");
       return;
@@ -115,7 +128,15 @@ export default function BottomSheet() {
       return;
     }
     setAmountError("");
+    
+    // Save correction if user changed the predicted category
+    if (initialPrediction && perfer && initialPrediction.toLowerCase() !== perfer.toLowerCase()) {
+      const categoryLabel = expenseCategoriesList.find(c => c.key === perfer)?.label || perfer;
+      await saveCategoryCorrection(addName, initialPrediction, categoryLabel);
+    }
+    
     handleAdd();
+    setInitialPrediction("");
   };
 
   const handleSheetClose = React.useCallback(() => {

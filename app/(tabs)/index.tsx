@@ -441,7 +441,6 @@ export default function Index() {
   ]);
 
   const totalToday = useMemo(() => {
-    // Only count items in the active list
     return expList.reduce((sum, item) => sum + (item.value || 0), 0);
   }, [expList]);
 

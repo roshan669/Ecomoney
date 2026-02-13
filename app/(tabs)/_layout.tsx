@@ -8,50 +8,50 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: themeColors.tint,
-        tabBarInactiveTintColor: themeColors.icon,
-        tabBarStyle: {
-          backgroundColor: themeColors.background,
-          borderTopColor: themeColors.border,
-        },
-        headerStyle: {
-          backgroundColor: themeColors.background,
-        },
-        headerTintColor: themeColors.text,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          headerShown: false,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              color={color}
-              size={24}
-            />
-          ),
-        }}
-      />
+          screenOptions={{
+            tabBarActiveTintColor: themeColors.tint,
+            tabBarInactiveTintColor: themeColors.icon,
+            tabBarStyle: {
+              backgroundColor: themeColors.background,
+              borderTopColor: themeColors.border,
+            },
+            headerStyle: {
+              backgroundColor: themeColors.background,
+            },
+            headerTintColor: themeColors.text,
+          }}
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: "Home",
+              headerShown: false,
+              tabBarIcon: ({ color, focused }) => (
+                <Ionicons
+                  name={focused ? "home" : "home-outline"}
+                  color={color}
+                  size={24}
+                />
+              ),
+            }}
+          />
 
-      <Tabs.Screen
-        name="report"
-        options={{
-          // animation: "shift", // Removed to prevent shadow artifacts
-          headerTitleAlign: "center",
-          title: "Report",
-          headerShown: false,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "calendar-sharp" : "calendar-outline"}
-              color={color}
-              size={24}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+          <Tabs.Screen
+            name="report"
+            options={{
+              // animation: "shift", // Removed to prevent shadow artifacts
+              headerTitleAlign: "center",
+              title: "Report",
+              headerShown: false,
+              tabBarIcon: ({ color, focused }) => (
+                <Ionicons
+                  name={focused ? "calendar-sharp" : "calendar-outline"}
+                  color={color}
+                  size={24}
+                />
+              ),
+            }}
+          />
+        </Tabs>
   );
 }

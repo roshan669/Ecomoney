@@ -871,7 +871,6 @@ export default function Report() {
   );
 
   const renderTable = () => {
-    // Prep table data
     const headers = ["Date", "Expense", "Items"];
     return (
       <View

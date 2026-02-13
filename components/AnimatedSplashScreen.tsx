@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, Dimensions, Text } from "react-native";
+import { View, StyleSheet, Text, Image } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -30,7 +30,7 @@ export default function AnimatedSplashScreen({
     // Hide native splash screen once we are mounted
     SplashScreen.hideAsync();
     // 1. Wallet pops up
-    walletScale.value = withTiming(1.5, {
+    walletScale.value = withTiming(5, {
       duration: 800,
       easing: Easing.out(Easing.cubic),
     });
@@ -48,8 +48,7 @@ export default function AnimatedSplashScreen({
     coinTranslateY.value = withDelay(
       300,
       withSequence(
-        withTiming(450, { duration: 500, easing: Easing.linear }), // Drop down to land on wallet
-        // withDelay(50, withTiming(250, { duration: 50 })), // Continue falling/disappearing
+        withTiming(460, { duration: 500, easing: Easing.linear }), // Drop down to land on wallet
       ),
     );
 
@@ -92,7 +91,11 @@ export default function AnimatedSplashScreen({
 
         {/* Wallet */}
         <Animated.View style={[styles.wallet, walletStyle]}>
-          <Ionicons name="wallet" size={80} color="#fff" />
+          <Image
+            source={require("@/assets/images/noBgLogo.png")}
+            style={{ width: 70, height: 70 }}
+            resizeMode="contain"
+          />
         </Animated.View>
       </View>
 
