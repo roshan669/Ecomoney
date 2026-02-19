@@ -32,7 +32,12 @@ import { useFocusEffect } from "expo-router";
 import BottomSheet from "@/components/BottomSheet";
 import Alert from "@/components/Alert.modal";
 import { getCategoryColor, getCategoryIcon } from "@/constants/categories";
-
+import notifee, {
+  TimestampTrigger,
+  TriggerType,
+  EventType,
+  RepeatFrequency,
+} from "@notifee/react-native";
 // --- Component: Expense Item Row ---
 
 const ExpenseRow = ({
@@ -278,7 +283,10 @@ export default function Index() {
       }
     }, 2500);
 
+    onCreateTriggerNotification();
+
     return () => clearTimeout(timer);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -443,6 +451,61 @@ export default function Index() {
   const totalToday = useMemo(() => {
     return expList.reduce((sum, item) => sum + (item.value || 0), 0);
   }, [expList]);
+
+  async function onCreateTriggerNotification() {
+    const existingNotifications = await notifee.getTriggerNotificationIds();
+    if (existingNotifications.length > 0) {
+      console.log('Notification already scheduled');
+      return;
+    }
+
+    await notifee.requestPermission();
+
+    const channelId = await notifee.createChannel({
+      id: "expense-reminders",
+      name: "Expense Reminders",
+    });
+
+    const triggerDate = new Date();
+    triggerDate.setHours(20);
+    triggerDate.setMinutes(0);
+    triggerDate.setSeconds(0);
+
+    if (triggerDate.getTime() <= Date.now()) {
+      triggerDate.setDate(triggerDate.getDate() + 1);
+    }
+
+    const trigger: TimestampTrigger = {
+      type: TriggerType.TIMESTAMP,
+      timestamp: triggerDate.getTime(),
+      repeatFrequency: RepeatFrequency.DAILY,
+    };
+
+    await notifee.createTriggerNotification(
+      {
+        id: 'daily-expense-reminder',
+        title: "💰 Track Your Expenses",
+        body: "Don't forget to log today's expenses!",
+        android: {
+          channelId,
+          smallIcon: "ic_notification",
+          color: "#4F46E5",
+          pressAction: {
+            id: "default",
+          },
+        },
+        data: {
+          action: "open_expense_sheet",
+        },
+      },
+      trigger,
+    );
+
+    ToastAndroid.show(
+      `Daily reminder set for ${triggerDate.toLocaleTimeString()}`,
+      ToastAndroid.SHORT,
+    );
+  }
 
   return (
     <View

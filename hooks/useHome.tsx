@@ -45,6 +45,7 @@ interface HomeContextType {
   setDbInitialized: (value: boolean) => void;
   selectedDate: Date;
   setSelectedDate: (value: Date) => void;
+  openBottomSheet: () => void;
 }
 
 const HomeContext = createContext<HomeContextType>({
@@ -104,6 +105,9 @@ const HomeContext = createContext<HomeContextType>({
   },
   selectedDate: new Date(),
   setSelectedDate: () => {
+    console.log("wrap the layot with useHome provider");
+  },
+  openBottomSheet: () => {
     console.log("wrap the layot with useHome provider");
   },
 });
@@ -228,6 +232,10 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     },
     [loadPreferences],
   );
+
+  const openBottomSheet = useCallback(() => {
+    bottomSheetModalRef.current?.present();
+  }, []);
 
   const handleSheetClose = React.useCallback(() => {
     bottomSheetModalRef.current?.close();
@@ -358,6 +366,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       setDbInitialized,
       selectedDate,
       setSelectedDate,
+      openBottomSheet,
     }),
     [
       inputRefs,
@@ -380,6 +389,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       setDbInitialized,
       selectedDate,
       setSelectedDate,
+      openBottomSheet,
     ],
   );
 

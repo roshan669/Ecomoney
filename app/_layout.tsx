@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import AnimatedSplashScreen from "@/components/AnimatedSplashScreen";
 import * as SplashScreen from "expo-splash-screen";
 import { initializeDatabase } from "@/database/init";
+import notifee, { EventType } from "@notifee/react-native";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* reloading the app might trigger some race conditions, ignore them */
@@ -19,14 +20,35 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 function Layout() {
   const [isSplashFinished, setIsSplashFinished] = useState(false);
-  const { theme, themeColors } = useContext(HomeContext);
+  const { theme, themeColors, openBottomSheet } = useContext(HomeContext);
 
   // Initialize database on app startup
   useEffect(() => {
     initializeDatabase().catch((error) => {
       console.error("Failed to initialize database:", error);
     });
-  }, []);
+
+    notifee.getInitialNotification().then((initialNotification) => {
+      if (initialNotification?.notification?.data?.action === "open_expense_sheet") {
+        setTimeout(() => {
+          console.log("Opening bottom sheet from initial notification");
+          openBottomSheet();
+        }, 1000);
+      }
+    });
+
+    const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
+      console.log("Foreground event:", type, detail.notification?.data);
+      if (type === EventType.PRESS && detail.notification?.data?.action === "open_expense_sheet") {
+        console.log("Opening bottom sheet from foreground event");
+        openBottomSheet();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [openBottomSheet]);
 
   return (
     <View style={{ flex: 1, backgroundColor: themeColors.background }}>
