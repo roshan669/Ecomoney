@@ -28,6 +28,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { list } from "@/types/types";
 import { HomeContext } from "@/hooks/useHome";
 import { useExpenses } from "@/hooks/useExpenses";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useFocusEffect } from "expo-router";
 import BottomSheet from "@/components/BottomSheet";
 import Alert from "@/components/Alert.modal";
@@ -37,7 +38,9 @@ import notifee, {
   TriggerType,
   EventType,
   RepeatFrequency,
+  AndroidNotificationSetting,
 } from "@notifee/react-native";
+import { Alert as RNAlert } from "react-native";
 // --- Component: Expense Item Row ---
 
 const ExpenseRow = ({
@@ -141,6 +144,7 @@ export default function Index() {
 
   // Database hook for expense management
   const { deleteExpenseItem, loadExpenses } = useExpenses();
+  const { setupDailyReminder } = useNotifications();
   const [pendingDeleteItem, setPendingDeleteItem] = useState<list | null>(null);
 
   const hasLoadedRef = useRef(false);
@@ -187,6 +191,9 @@ export default function Index() {
   // --- Load today's expenses from database on mount and when screen is focused ---
   useFocusEffect(
     useCallback(() => {
+      // Check permission on every focus
+      onCreateTriggerNotification();
+
       // Always load on first focus, then skip if already loaded
       if (hasLoadedRef.current) {
         return;
@@ -282,8 +289,6 @@ export default function Index() {
         console.error("Backup loader error:", error);
       }
     }, 2500);
-
-    onCreateTriggerNotification();
 
     return () => clearTimeout(timer);
 
@@ -453,58 +458,59 @@ export default function Index() {
   }, [expList]);
 
   async function onCreateTriggerNotification() {
-    const existingNotifications = await notifee.getTriggerNotificationIds();
-    if (existingNotifications.length > 0) {
-      console.log('Notification already scheduled');
+    // Check if user opted out of reminders
+    const optedOut = await AsyncStorage.getItem("REMINDER_OPTED_OUT");
+    if (optedOut === "true") {
+      return;
+    }
+
+    // Check if we already asked for permission
+    const askedForPermission = await AsyncStorage.getItem(
+      "ASKED_ALARM_PERMISSION",
+    );
+    if (askedForPermission === "true") {
       return;
     }
 
     await notifee.requestPermission();
 
-    const channelId = await notifee.createChannel({
-      id: "expense-reminders",
-      name: "Expense Reminders",
-    });
+    // Check and request exact alarm permission (Android 14+)
+    const settings = await notifee.getNotificationSettings();
 
-    const triggerDate = new Date();
-    triggerDate.setHours(20);
-    triggerDate.setMinutes(0);
-    triggerDate.setSeconds(0);
+    // If permission is disabled, cancel existing notifications and prompt user
+    if (settings.android.alarm === AndroidNotificationSetting.DISABLED) {
+      const existingNotifications = await notifee.getTriggerNotificationIds();
+      if (existingNotifications.length > 0) {
+        await notifee.cancelAllNotifications();
+        console.log("Cancelled notifications due to missing permission");
+      }
 
-    if (triggerDate.getTime() <= Date.now()) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
+      await AsyncStorage.setItem("ASKED_ALARM_PERMISSION", "true");
+
+      RNAlert.alert(
+        "Permission Required!",
+        "To ensure you get reminder, EcoMoney needs permission to set reminders.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Open Settings",
+            onPress: async () => {
+              await notifee.openAlarmPermissionSettings();
+            },
+          },
+        ],
+      );
+      return;
     }
 
-    const trigger: TimestampTrigger = {
-      type: TriggerType.TIMESTAMP,
-      timestamp: triggerDate.getTime(),
-      repeatFrequency: RepeatFrequency.DAILY,
-    };
+    // Permission is granted, check if notification already exists
+    const existingNotifications = await notifee.getTriggerNotificationIds();
+    if (existingNotifications.length > 0) {
+      console.log("Notification already scheduled");
+      return;
+    }
 
-    await notifee.createTriggerNotification(
-      {
-        id: 'daily-expense-reminder',
-        title: "💰 Track Your Expenses",
-        body: "Don't forget to log today's expenses!",
-        android: {
-          channelId,
-          smallIcon: "ic_notification",
-          color: "#4F46E5",
-          pressAction: {
-            id: "default",
-          },
-        },
-        data: {
-          action: "open_expense_sheet",
-        },
-      },
-      trigger,
-    );
-
-    ToastAndroid.show(
-      `Daily reminder set for ${triggerDate.toLocaleTimeString()}`,
-      ToastAndroid.SHORT,
-    );
+    await setupDailyReminder();
   }
 
   return (

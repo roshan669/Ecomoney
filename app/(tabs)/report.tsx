@@ -16,188 +16,18 @@ import React, {
   useMemo,
   useCallback,
   useContext,
-  memo,
 } from "react";
 import { Table, Row } from "react-native-table-component";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { PieChart as GiftedPieChart } from "react-native-gifted-charts";
 import type { ReportData } from "@/types/types";
 import Menu from "@/components/Menu.modal";
 import { HomeContext } from "@/hooks/useHome";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryColor } from "@/constants/categories";
-
-// --- Components ---
-
-// Memoized Pie Chart Component
-const MemoizedPieChart = memo(
-  ({
-    chartData,
-    stats,
-    currencySymbol,
-    themeColors,
-    onSlicePress,
-  }: {
-    chartData: any[];
-    stats: any;
-    currencySymbol: string;
-    themeColors: any;
-    onSlicePress?: (categoryKey: string) => void;
-  }) => (
-    <View style={[styles.chartSection, { backgroundColor: themeColors.card }]}>
-      <View style={styles.chartWrapper}>
-        <GiftedPieChart
-          data={chartData}
-          donut
-          radius={150}
-          innerRadius={80}
-          showText
-          textColor="#fff"
-          innerCircleColor={themeColors.card}
-          focusOnPress
-          onPress={(item: any) => {
-            if (onSlicePress && item) {
-              const key = (item as any).categoryKey || (item as any).label;
-              if (typeof key === "string" && key.length > 0) {
-                onSlicePress(key);
-              }
-            }
-          }}
-          centerLabelComponent={() => (
-            <View style={styles.donutCenter}>
-              <Text style={[styles.donutTitle, { color: themeColors.subText }]}>
-                Total
-              </Text>
-              <Text style={[styles.donutAmount, { color: themeColors.text }]}>
-                {currencySymbol}
-                {stats.total}
-              </Text>
-            </View>
-          )}
-          animationDuration={1000}
-        />
-      </View>
-
-      {/* Legend List */}
-      <View style={styles.legendContainer}>
-        {stats.categoryData.map((item: any, index: number) => (
-          <View key={index} style={styles.legendItem}>
-            <View
-              style={[styles.legendColor, { backgroundColor: item.color }]}
-            />
-            <Text style={[styles.legendName, { color: themeColors.text }]}>
-              {item.name}
-            </Text>
-            <Text style={[styles.legendValue, { color: themeColors.text }]}>
-              {currencySymbol}
-              {item.value.toFixed(2)}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  ),
-);
-
-MemoizedPieChart.displayName = "MemoizedPieChart";
-
-// 1. Summary Card
-const SummaryCard = ({
-  title,
-  value,
-  icon,
-  color,
-  themeColors,
-}: {
-  title: string;
-  value: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  themeColors: any;
-}) => (
-  <View
-    style={[styles.summaryCardContainer, { backgroundColor: themeColors.card }]}
-  >
-    <View
-      style={[styles.summaryCardContent, { backgroundColor: themeColors.card }]}
-    >
-      <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={24} color={color} />
-      </View>
-      <View>
-        <Text style={[styles.summaryLabel, { color: themeColors.subText }]}>
-          {title}
-        </Text>
-        <Text style={[styles.summaryValue, { color: themeColors.text }]}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  </View>
-);
-
-// 2. Segmented Control
-const ViewSegmentControl = ({
-  selected,
-  onSelect,
-  themeColors,
-}: {
-  selected: "chart" | "table";
-  onSelect: (v: "chart" | "table") => void;
-  themeColors: any;
-}) => (
-  <View
-    style={[styles.segmentContainer, { backgroundColor: themeColors.border }]}
-  >
-    <TouchableOpacity
-      style={[
-        styles.segmentButton,
-        selected === "chart" && styles.segmentButtonActive,
-        selected === "chart" && { backgroundColor: themeColors.card },
-      ]}
-      onPress={() => onSelect("chart")}
-    >
-      <Ionicons
-        name="pie-chart"
-        size={18}
-        color={selected === "chart" ? "#4F46E5" : themeColors.icon}
-      />
-      <Text
-        style={[
-          styles.segmentText,
-          selected === "chart" && styles.segmentTextActive,
-          { color: selected === "chart" ? "#4F46E5" : themeColors.subText },
-        ]}
-      >
-        Analysis
-      </Text>
-    </TouchableOpacity>
-    <TouchableOpacity
-      style={[
-        styles.segmentButton,
-        selected === "table" && styles.segmentButtonActive,
-        selected === "table" && { backgroundColor: themeColors.card },
-      ]}
-      onPress={() => onSelect("table")}
-    >
-      <Ionicons
-        name="list"
-        size={18}
-        color={selected === "table" ? "#4F46E5" : themeColors.icon}
-      />
-      <Text
-        style={[
-          styles.segmentText,
-          selected === "table" && styles.segmentTextActive,
-          { color: selected === "table" ? "#4F46E5" : themeColors.subText },
-        ]}
-      >
-        Records
-      </Text>
-    </TouchableOpacity>
-  </View>
-);
+import { MemoizedPieChart } from "@/components/report/PieChart";
+import { SummaryCard } from "@/components/report/SummaryCard";
+import { ViewSegmentControl } from "@/components/report/ViewSegmentControl";
 
 export default function Report() {
   // --- State ---
@@ -537,17 +367,38 @@ export default function Report() {
               setAllMonths(months);
 
               if (allExp.length > 0) {
-                // Load based on current selection
+                // Get current month
+                const now = new Date();
+                const currentMonth = now.toLocaleString("en-US", {
+                  month: "short",
+                  year: "numeric",
+                });
+
+                // Load based on current selection or default to current month
                 if (selectedMonthTitle === "All Time") {
-                  console.log("Loading all data");
-                  await loadAllData(allExp);
+                  // Default to current month if available, otherwise All Time
+                  if (months.includes(currentMonth)) {
+                    console.log("Loading current month:", currentMonth);
+                    await loadReportData(currentMonth, allExp);
+                  } else {
+                    console.log("Loading all data (no current month data)");
+                    await loadAllData(allExp);
+                  }
                 } else if (months.includes(selectedMonthTitle)) {
                   console.log("Loading report for month:", selectedMonthTitle);
                   await loadReportData(selectedMonthTitle, allExp);
                 } else {
-                  // Default to All Time view
-                  console.log("Loading all data (default)");
-                  await loadAllData(allExp);
+                  // Selected month no longer exists, default to current month or All Time
+                  if (months.includes(currentMonth)) {
+                    console.log(
+                      "Loading current month (fallback):",
+                      currentMonth,
+                    );
+                    await loadReportData(currentMonth, allExp);
+                  } else {
+                    console.log("Loading all data (fallback)");
+                    await loadAllData(allExp);
+                  }
                 }
                 lastFetchTime.current = Date.now();
               } else {
@@ -1247,76 +1098,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
   },
-  summaryCardContainer: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  summaryCardContent: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 16,
-    flexDirection: "column",
-    gap: 12,
-    backgroundColor: "#fff",
-    overflow: "hidden",
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "500",
-    textTransform: "uppercase",
-  },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  // Segment
-  segmentContainer: {
-    flexDirection: "row",
-    backgroundColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 4,
-  },
-  segmentButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-    borderRadius: 10,
-    gap: 8,
-  },
-  segmentButtonActive: {
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  segmentTextActive: {
-    color: "#4F46E5",
-  },
   // Main Card
   contentCardContainer: {
     backgroundColor: "#fff",
@@ -1334,59 +1115,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     overflow: "hidden",
     minHeight: 300,
-  },
-  // Chart
-  chartSection: {
-    alignItems: "center",
-    gap: 24,
-  },
-  chartWrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-  },
-  donutCenter: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  donutTitle: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  donutAmount: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  legendContainer: {
-    width: "100%",
-    gap: 12,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  legendColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  legendName: {
-    fontSize: 14,
-    color: "#374151",
-    fontWeight: "500",
-    flex: 1,
-  },
-  legendValue: {
-    fontSize: 14,
-    color: "#111827",
-    fontWeight: "600",
   },
   // Table
   tableContainer: {

@@ -8,14 +8,19 @@ import {
   Modal,
   Pressable,
   Switch,
+  Alert,
+  AppState,
 } from "react-native";
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import * as Print from "expo-print";
 import { Ionicons } from "@expo/vector-icons";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import { HomeContext } from "@/hooks/useHome";
 import { currencies } from "@/constants/categories";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import notifee, { AndroidNotificationSetting } from "@notifee/react-native";
+import { useNotifications } from "@/hooks/useNotifications";
 
 interface menuProps {
   reportData: any[];
@@ -30,8 +35,154 @@ export default function Menu({
 }: menuProps) {
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const [showCurrencyMenu, setShowCurrencyMenu] = useState<boolean>(false);
+  const [remindersEnabled, setRemindersEnabled] = useState<boolean>(true);
   const { currencySymbol, setCurrencySymbol, theme, toggleTheme, themeColors } =
     useContext(HomeContext);
+  const appState = useRef(AppState.currentState);
+  const { setupDailyReminder } = useNotifications();
+
+  const loadReminderStatus = async () => {
+    const optedOut = await AsyncStorage.getItem("REMINDER_OPTED_OUT");
+    if (optedOut === "true") {
+      setRemindersEnabled(false);
+      return;
+    }
+    const settings = await notifee.getNotificationSettings();
+    const hasNotificationPermission = settings.authorizationStatus === 1;
+    const hasAlarmPermission =
+      settings.android.alarm !== AndroidNotificationSetting.DISABLED;
+    setRemindersEnabled(hasNotificationPermission && hasAlarmPermission);
+  };
+
+  useEffect(() => {
+    if (showMenu) {
+      loadReminderStatus();
+    }
+  }, [showMenu]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === "active"
+      ) {
+        if (showMenu) {
+          loadReminderStatus();
+        }
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [showMenu]);
+
+  const toggleReminders = async () => {
+    const newValue = !remindersEnabled;
+
+    if (newValue) {
+      const permissionResult = await notifee.requestPermission();
+
+      if (permissionResult.authorizationStatus !== 1) {
+        await new Promise<void>((resolve) => {
+          Alert.alert(
+            "Permission Required",
+            "To enable reminders, EcoMoney needs notification permission.",
+            [
+              { text: "Cancel", style: "cancel", onPress: () => resolve() },
+              {
+                text: "Open Settings",
+                onPress: async () => {
+                  await notifee.openNotificationSettings();
+
+                  const checkPermission = new Promise<void>((resolveCheck) => {
+                    const subscription = AppState.addEventListener(
+                      "change",
+                      async (nextAppState) => {
+                        if (nextAppState === "active") {
+                          subscription.remove();
+                          const newPermission = await notifee.requestPermission();
+                          if (newPermission.authorizationStatus === 1) {
+                            await loadReminderStatus();
+                          }
+                          resolveCheck();
+                        }
+                      },
+                    );
+                  });
+
+                  await checkPermission;
+                  resolve();
+                },
+              },
+            ],
+          );
+        });
+        return;
+      }
+
+      const settings = await notifee.getNotificationSettings();
+
+      if (settings.android.alarm === AndroidNotificationSetting.DISABLED) {
+        await new Promise<void>((resolve) => {
+          Alert.alert(
+            "Permission Required",
+            "To enable reminders, EcoMoney needs permission to set alarms.",
+            [
+              { text: "Cancel", style: "cancel", onPress: () => resolve() },
+              {
+                text: "Open Settings",
+                onPress: async () => {
+                  await notifee.openAlarmPermissionSettings();
+
+                  const checkPermission = new Promise<void>((resolveCheck) => {
+                    const subscription = AppState.addEventListener(
+                      "change",
+                      async (nextAppState) => {
+                        if (nextAppState === "active") {
+                          subscription.remove();
+                          const newSettings =
+                            await notifee.getNotificationSettings();
+                          if (
+                            newSettings.android.alarm !==
+                            AndroidNotificationSetting.DISABLED
+                          ) {
+                            await AsyncStorage.removeItem("REMINDER_OPTED_OUT");
+                            await setupDailyReminder();
+                            setRemindersEnabled(true);
+                            ToastAndroid.show(
+                              "Reminders enabled",
+                              ToastAndroid.SHORT,
+                            );
+                          }
+                          resolveCheck();
+                        }
+                      },
+                    );
+                  });
+
+                  await checkPermission;
+                  resolve();
+                },
+              },
+            ],
+          );
+        });
+        return;
+      }
+
+      setRemindersEnabled(true);
+      await AsyncStorage.removeItem("REMINDER_OPTED_OUT");
+      await setupDailyReminder();
+      ToastAndroid.show("Reminders enabled", ToastAndroid.SHORT);
+    } else {
+      setRemindersEnabled(false);
+      await AsyncStorage.setItem("REMINDER_OPTED_OUT", "true");
+      await notifee.cancelAllNotifications();
+      ToastAndroid.show("Reminders disabled", ToastAndroid.SHORT);
+    }
+  };
 
   const printReport = async () => {
     setShowMenu(false);
@@ -271,6 +422,40 @@ export default function Menu({
                     value={theme === "dark"}
                     onValueChange={toggleTheme}
                     thumbColor={theme === "dark" ? "#f4f3f4" : "#f4f3f4"}
+                    trackColor={{ false: "#767577", true: "#81b0ff" }}
+                  />
+                </TouchableOpacity>
+
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: themeColors.border },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  activeOpacity={1}
+                  onPress={toggleReminders}
+                >
+                  <Ionicons
+                    name="notifications-outline"
+                    size={20}
+                    color={themeColors.text}
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text
+                    style={[
+                      styles.menuItemText,
+                      { flex: 1, color: themeColors.text },
+                    ]}
+                  >
+                    Reminders
+                  </Text>
+                  <Switch
+                    value={remindersEnabled}
+                    onValueChange={toggleReminders}
+                    thumbColor={remindersEnabled ? "#f4f3f4" : "#f4f3f4"}
                     trackColor={{ false: "#767577", true: "#81b0ff" }}
                   />
                 </TouchableOpacity>

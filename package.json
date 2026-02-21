@@ -8,7 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "bundle": "cd android && ./gradlew bundleRelease"
+    "bundle": "cd android && gradlew bundleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
