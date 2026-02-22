@@ -88,7 +88,7 @@ export const styles = StyleSheet.create({
   modalContentContainer: {
     flex: 1,
     padding: 24,
-    backgroundColor: "#fff",
+    // backgroundColor: "#fff",
   },
   modalHeader: {
     marginBottom: 24,

@@ -20,35 +20,44 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 function Layout() {
   const [isSplashFinished, setIsSplashFinished] = useState(false);
-  const { theme, themeColors, openBottomSheet } = useContext(HomeContext);
+  const { theme, themeColors, setDbInitialized } = useContext(HomeContext);
+  const router = useRouter();
 
   // Initialize database on app startup
   useEffect(() => {
-    initializeDatabase().catch((error) => {
+    try {
+      initializeDatabase();
+      setDbInitialized(true);
+    } catch (error) {
       console.error("Failed to initialize database:", error);
-    });
+    }
 
     notifee.getInitialNotification().then((initialNotification) => {
-      if (initialNotification?.notification?.data?.action === "open_expense_sheet") {
+      if (
+        initialNotification?.notification?.data?.action === "open_expense_sheet"
+      ) {
         setTimeout(() => {
-          console.log("Opening bottom sheet from initial notification");
-          openBottomSheet();
+          console.log("Navigating to add screen from initial notification");
+          router.push("/(tabs)/add");
         }, 1000);
       }
     });
 
     const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
       console.log("Foreground event:", type, detail.notification?.data);
-      if (type === EventType.PRESS && detail.notification?.data?.action === "open_expense_sheet") {
-        console.log("Opening bottom sheet from foreground event");
-        openBottomSheet();
+      if (
+        type === EventType.PRESS &&
+        detail.notification?.data?.action === "open_expense_sheet"
+      ) {
+        console.log("Navigating to add screen from foreground event");
+        router.push("/(tabs)/add");
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [openBottomSheet]);
+  }, [router, setDbInitialized]);
 
   return (
     <View style={{ flex: 1, backgroundColor: themeColors.background }}>

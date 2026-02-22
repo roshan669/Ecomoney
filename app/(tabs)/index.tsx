@@ -19,6 +19,8 @@ import {
   Animated,
   Modal,
   Pressable,
+  Alert as RNAlert,
+  Image,
 } from "react-native";
 import DateTimePicker, { useDefaultStyles } from "react-native-ui-datepicker";
 import dayjs from "dayjs";
@@ -30,17 +32,11 @@ import { HomeContext } from "@/hooks/useHome";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useFocusEffect } from "expo-router";
-import BottomSheet from "@/components/BottomSheet";
 import Alert from "@/components/Alert.modal";
 import { getCategoryColor, getCategoryIcon } from "@/constants/categories";
-import notifee, {
-  TimestampTrigger,
-  TriggerType,
-  EventType,
-  RepeatFrequency,
-  AndroidNotificationSetting,
-} from "@notifee/react-native";
-import { Alert as RNAlert } from "react-native";
+import notifee, { AndroidNotificationSetting } from "@notifee/react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 // --- Component: Expense Item Row ---
 
 const ExpenseRow = ({
@@ -91,14 +87,14 @@ const ExpenseRow = ({
           {currencySymbol}
         </Text>
         <Text style={[styles.amountText, { color: themeColors.text }]}>
-          {item.value?.toLocaleString() || "0"}
+          {item.value?.toFixed(2) || "0"}
         </Text>
       </View>
 
       {/* Delete Action */}
       <TouchableOpacity
         onPress={onDelete}
-        style={styles.deleteBtn}
+        style={[styles.deleteBtn, { backgroundColor: themeColors.card }]}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Ionicons name="trash-outline" size={18} color="#EF4444" />
@@ -114,8 +110,6 @@ export default function Index() {
     expList,
     setExpList,
     setAllInputs,
-    bottomSheetModalRef,
-    inputRefs,
     setShowWarning,
     setAgree,
     setItemToDelete,
@@ -146,6 +140,7 @@ export default function Index() {
   const { deleteExpenseItem, loadExpenses } = useExpenses();
   const { setupDailyReminder } = useNotifications();
   const [pendingDeleteItem, setPendingDeleteItem] = useState<list | null>(null);
+  const [greeting, setGreeting] = useState<string>("Good Morning! ☀️");
 
   const hasLoadedRef = useRef(false);
 
@@ -338,11 +333,6 @@ export default function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expList.length]);
 
-  const handlePresentModalPress = useCallback(() => {
-    inputRefs.current.forEach((input) => input?.blur());
-    (bottomSheetModalRef as any).current?.present();
-  }, [bottomSheetModalRef, inputRefs]);
-
   // --- Logic: Reload expenses when database changes ---
   useEffect(() => {
     const reloadExpenses = async () => {
@@ -513,6 +503,8 @@ export default function Index() {
     await setupDailyReminder();
   }
 
+  const insets = useSafeAreaInsets();
+
   return (
     <View
       style={[styles.container, { backgroundColor: themeColors.background }]}
@@ -522,6 +514,59 @@ export default function Index() {
         backgroundColor={themeColors.background}
       />
 
+      <View style={[styles.headerWrapper, { marginTop: insets.top }]}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            paddingHorizontal: 6,
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 10,
+            }}
+          >
+            <Ionicons name="wallet" size={20} color={themeColors.text} />
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: "700",
+                color: themeColors.text,
+                letterSpacing: 0.5,
+              }}
+            >
+              EcoMoney
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.dateBadge, { backgroundColor: themeColors.card }]}
+            onPress={() => setShowDatePicker(true)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="calendar" size={12} color={themeColors.subText} />
+            <Text style={[styles.dateText, { color: themeColors.subText }]}>
+              {selectedDate.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year:
+                  selectedDate.getFullYear() !== new Date().getFullYear()
+                    ? "numeric"
+                    : undefined,
+              })}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={12}
+              color={themeColors.subText}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Header Summary Card */}
       <View
         style={[
@@ -529,10 +574,10 @@ export default function Index() {
           { backgroundColor: themeColors.background },
         ]}
       >
-        <TouchableOpacity
+        <View
           style={styles.summaryCardContainer}
-          activeOpacity={0.9}
-          onPress={() => setShowDatePicker(true)}
+          // activeOpacity={0.9}
+          // onPress={() => setShowDatePicker(true)}
         >
           <LinearGradient
             colors={["#1207a9", "#4d44af"]}
@@ -542,33 +587,15 @@ export default function Index() {
           >
             <View>
               <Text style={styles.summaryLabel}>
-                {isToday ? "Total Expense Today" : "Total Expense"}
+                {isToday ? "Total Spent Today" : "Total Spent"}
               </Text>
               <Text style={styles.summaryValue}>
                 {currencySymbol}
                 {totalToday.toFixed(2)}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.dateBadge}
-              onPress={() => setShowDatePicker(true)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="calendar" size={12} color="#4F46E5" />
-              <Text style={styles.dateText}>
-                {selectedDate.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year:
-                    selectedDate.getFullYear() !== new Date().getFullYear()
-                      ? "numeric"
-                      : undefined,
-                })}
-              </Text>
-              <Ionicons name="chevron-down" size={12} color="#4F46E5" />
-            </TouchableOpacity>
           </LinearGradient>
-        </TouchableOpacity>
+        </View>
       </View>
 
       {/* Date Picker Modal */}
@@ -617,6 +644,7 @@ export default function Index() {
                 ...defaultStyles,
                 today: { borderColor: "#4F46E5", borderWidth: 1 },
                 selected: { backgroundColor: "#4F46E5" },
+                today_label: { color: themeColors.text },
                 selected_label: { color: "#FFFFFF" },
                 day_label: { color: themeColors.text },
                 weekday_label: { color: themeColors.text },
@@ -733,21 +761,6 @@ export default function Index() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        activeOpacity={0.8}
-        onPress={handlePresentModalPress}
-      >
-        <LinearGradient
-          colors={["#4F46E5", "#6366F1"]}
-          style={styles.fabGradient}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <BottomSheet />
       <Alert
         title="Delete Transaction?"
         description="Are you sure you want to delete"
@@ -763,8 +776,8 @@ const styles = StyleSheet.create({
   },
   headerWrapper: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    // paddingTop:
+    paddingBottom: 15,
   },
   // Split styles: Container handles shadow/shape, Gradient handles content
   summaryCardContainer: {
@@ -798,7 +811,7 @@ const styles = StyleSheet.create({
   dateBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
@@ -892,7 +905,7 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     padding: 8,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "grey",
     borderRadius: 8,
   },
   // Empty State

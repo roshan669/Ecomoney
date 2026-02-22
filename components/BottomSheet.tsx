@@ -1,10 +1,4 @@
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  BackHandler,
-  Button,
-} from "react-native";
+import { View, Text, TouchableOpacity, BackHandler } from "react-native";
 import React, { useContext, useEffect, useState } from "react";
 import {
   BottomSheetBackdrop,
@@ -25,7 +19,10 @@ import {
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadModel, predictCategory } from "@/utils/ExpenseClassifier";
-import { saveCategoryCorrection, getLearnedCategory } from "@/utils/CategoryLearning";
+import {
+  saveCategoryCorrection,
+  getLearnedCategory,
+} from "@/utils/CategoryLearning";
 
 export default function BottomSheet() {
   const amountInputRef = React.useRef<any>(null);
@@ -88,16 +85,16 @@ export default function BottomSheet() {
       // Check learned corrections first
       const learned = await getLearnedCategory(addName);
       let categoryToUse = learned;
-      
+
       if (!learned) {
         // Use ML model if no learned correction
         const result = await predictCategory(addName);
         categoryToUse = result.category;
       }
-      
+
       setPrediction(`Suggested: ${categoryToUse}`);
       setInitialPrediction(categoryToUse || "");
-      
+
       // Auto-select category
       const matchedCategory = expenseCategoriesList.find(
         (cat) => cat.label.toLowerCase() === categoryToUse?.toLowerCase(),
@@ -128,13 +125,18 @@ export default function BottomSheet() {
       return;
     }
     setAmountError("");
-    
+
     // Save correction if user changed the predicted category
-    if (initialPrediction && perfer && initialPrediction.toLowerCase() !== perfer.toLowerCase()) {
-      const categoryLabel = expenseCategoriesList.find(c => c.key === perfer)?.label || perfer;
+    if (
+      initialPrediction &&
+      perfer &&
+      initialPrediction.toLowerCase() !== perfer.toLowerCase()
+    ) {
+      const categoryLabel =
+        expenseCategoriesList.find((c) => c.key === perfer)?.label || perfer;
       await saveCategoryCorrection(addName, initialPrediction, categoryLabel);
     }
-    
+
     handleAdd();
     setInitialPrediction("");
   };

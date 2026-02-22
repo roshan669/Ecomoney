@@ -1,4 +1,4 @@
-import { ToastAndroid } from "react-native";
+
 import notifee, {
   TimestampTrigger,
   TriggerType,
@@ -19,8 +19,8 @@ export const useNotifications = () => {
     });
 
     const triggerDate = new Date();
-    triggerDate.setHours(19);
-    triggerDate.setMinutes(10);
+    triggerDate.setHours(20);
+    triggerDate.setMinutes(0);
     triggerDate.setSeconds(0);
 
     if (triggerDate.getTime() <= Date.now()) {
@@ -54,10 +54,6 @@ export const useNotifications = () => {
       trigger,
     );
 
-    ToastAndroid.show(
-      `Daily reminder set for ${triggerDate.toLocaleTimeString()}`,
-      ToastAndroid.SHORT,
-    );
   };
 
   return { setupDailyReminder };

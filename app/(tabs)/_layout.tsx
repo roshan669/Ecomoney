@@ -1,6 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useContext } from "react";
+import { View, StyleSheet } from "react-native";
 import { HomeContext } from "@/hooks/useHome";
 
 export default function TabLayout() {
@@ -37,9 +38,24 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
+        name="add"
+        options={{
+          title: "Add",
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "add-circle" : "add-circle-outline"}
+              // name="add"
+              color={color}
+              size={26}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="report"
         options={{
-          // animation: "shift", // Removed to prevent shadow artifacts
           headerTitleAlign: "center",
           title: "Analytics",
           headerShown: false,

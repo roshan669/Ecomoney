@@ -41,6 +41,7 @@ export default function Report() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const { currencySymbol, themeColors, theme, dbVersion } =
     useContext(HomeContext);
+  const [selectedSlice, setSelectedSlice] = useState<string>();
 
   const router = useRouter();
 
@@ -363,7 +364,6 @@ export default function Report() {
                 (a, b) => new Date(a).getTime() - new Date(b).getTime(),
               );
 
-              console.log("Available months:", months);
               setAllMonths(months);
 
               if (allExp.length > 0) {
@@ -378,7 +378,6 @@ export default function Report() {
                 if (selectedMonthTitle === "All Time") {
                   // Default to current month if available, otherwise All Time
                   if (months.includes(currentMonth)) {
-                    console.log("Loading current month:", currentMonth);
                     await loadReportData(currentMonth, allExp);
                   } else {
                     console.log("Loading all data (no current month data)");
@@ -408,6 +407,7 @@ export default function Report() {
                 setSelectedMonthTitle("All Time");
                 lastFetchTime.current = Date.now();
               }
+              setSelectedSlice(stats.topCategory);
             }
           } catch (error) {
             console.error("Error loading report data:", error);
@@ -470,7 +470,7 @@ export default function Report() {
     });
   }, [stats]);
 
-  const handleSlicePress = useCallback(
+  const handleLegendPress = useCallback(
     (categoryKey: string) => {
       if (!categoryKey) return;
       router.push({
@@ -677,8 +677,8 @@ export default function Report() {
       >
         <Text style={[styles.headerTitle, { color: themeColors.text }]}>
           {selectedMonthTitle === "All Time"
-            ? "All Time Report"
-            : "Monthly Report"}
+            ? "All Time Analytics"
+            : "Monthly Analytics"}
         </Text>
         <Menu
           generateHTML={generateHTML}
@@ -715,10 +715,10 @@ export default function Report() {
         stats={stats}
         currencySymbol={currencySymbol}
         themeColors={themeColors}
-        onSlicePress={handleSlicePress}
+        onLegendPress={handleLegendPress}
       />
     ),
-    [chartData, stats, currencySymbol, themeColors, handleSlicePress],
+    [chartData, stats, currencySymbol, themeColors, handleLegendPress],
   );
 
   const renderTable = () => {
@@ -771,7 +771,10 @@ export default function Report() {
     >
       {renderHeader()}
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {/* Loading State */}
         {isLoading ? (
           renderSkeleton()
@@ -859,6 +862,7 @@ export default function Report() {
             <ScrollView
               style={styles.monthPickerList}
               showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
             >
               {/* All Time Option */}
               <TouchableOpacity
@@ -984,7 +988,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingTop: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E5E7EB",
   },
   headerTop: {

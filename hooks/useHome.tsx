@@ -35,7 +35,7 @@ interface HomeContextType {
   addAmount: string;
   setAddAmount: (value: string) => void;
   bottomSheetModalRef: React.Ref<any>;
-  handleAdd: () => void;
+  handleAdd: () => Promise<boolean>;
   inputRefs: React.RefObject<(TextInput | null)[]>;
   currencySymbol: string;
   setCurrencySymbol: (value: string) => void;
@@ -87,8 +87,9 @@ const HomeContext = createContext<HomeContextType>({
     console.log("wrap the layot with useHome provider");
   },
   bottomSheetModalRef: { current: null },
-  handleAdd: () => {
+  handleAdd: async () => {
     console.log("wrap the layot with useHome provider");
+    return false;
   },
   inputRefs: { current: [] },
   currencySymbol: "$",
@@ -241,14 +242,14 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     bottomSheetModalRef.current?.close();
   }, []);
 
-  const handleAdd = useCallback(async () => {
+  const handleAdd = useCallback(async (): Promise<boolean> => {
     // Check if database is initialized
     if (!dbInitialized) {
       ToastAndroid.show(
         "Database is initializing, please try again",
         ToastAndroid.SHORT,
       );
-      return;
+      return false;
     }
 
     const trimmedName = addName.trim();
@@ -257,7 +258,7 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
     const amountNumber = trimmedAmount === "" ? 0 : parseInt(trimmedAmount, 10);
     if (Number.isNaN(amountNumber) || amountNumber < 0) {
       ToastAndroid.show("Enter a valid amount", ToastAndroid.SHORT);
-      return;
+      return false;
     }
 
     // Default to 'other' category if not selected
@@ -286,9 +287,11 @@ const HomeProvider = ({ children }: { children: React.ReactNode }) => {
       setPerfer("");
       handleSheetClose();
       ToastAndroid.show("Expense added successfully", ToastAndroid.SHORT);
+      return true;
     } catch (error) {
       console.error("Error saving expense:", error);
       ToastAndroid.show("Error saving expense", ToastAndroid.SHORT);
+      return false;
     }
   }, [
     addName,

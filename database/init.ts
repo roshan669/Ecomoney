@@ -4,14 +4,14 @@ import * as schema from './schema';
 
 let db: ReturnType<typeof drizzle> | null = null;
 
-export async function initializeDatabase() {
+export function initializeDatabase() {
     try {
-        const sqlite = await SQLite.openDatabaseAsync('calcu.db');
+        const sqlite = SQLite.openDatabaseSync('calcu.db');
 
         db = drizzle(sqlite, { schema });
 
         // Create tables if they don't exist
-        await sqlite.execAsync(`
+        sqlite.execSync(`
       CREATE TABLE IF NOT EXISTS expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -21,7 +21,7 @@ export async function initializeDatabase() {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-      
+
       CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
       CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
     `);
