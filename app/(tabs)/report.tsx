@@ -41,7 +41,6 @@ export default function Report() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const { currencySymbol, themeColors, theme, dbVersion } =
     useContext(HomeContext);
-  const [selectedSlice, setSelectedSlice] = useState<string>();
 
   const router = useRouter();
 
@@ -407,7 +406,6 @@ export default function Report() {
                 setSelectedMonthTitle("All Time");
                 lastFetchTime.current = Date.now();
               }
-              setSelectedSlice(stats.topCategory);
             }
           } catch (error) {
             console.error("Error loading report data:", error);
@@ -452,6 +450,60 @@ export default function Report() {
       })),
     };
   }, [reportData]);
+
+  const previousMonthComparison = useMemo(() => {
+    if (selectedMonthTitle === "All Time") return null;
+
+    const [monthStr, yearStr] = selectedMonthTitle.split(" ");
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    const monthIndex = monthNames.indexOf(monthStr);
+    const year = parseInt(yearStr, 10);
+
+    if (monthIndex === -1 || isNaN(year)) return null;
+
+    const prevDate = new Date(year, monthIndex - 1, 1);
+    const prevKey = prevDate.toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+    });
+
+    if (!allMonths.includes(prevKey)) return null;
+
+    const startDate = new Date(prevDate.getFullYear(), prevDate.getMonth(), 1)
+      .toISOString()
+      .split("T")[0];
+    const endDate = new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 0)
+      .toISOString()
+      .split("T")[0];
+
+    const prevTotal = allExpenses
+      .filter((exp) => exp.date >= startDate && exp.date <= endDate)
+      .reduce((sum, exp) => sum + (exp.value || 0), 0);
+
+    const currentTotal = parseFloat(stats.total) || 0;
+    const diff = currentTotal - prevTotal;
+    const percent = prevTotal > 0 ? (diff / prevTotal) * 100 : 0;
+
+    return {
+      prevKey,
+      prevTotal,
+      diff,
+      percent,
+    };
+  }, [selectedMonthTitle, allMonths, allExpenses, stats.total]);
 
   // --- Chart Data ---
   const chartData = useMemo(() => {
@@ -699,11 +751,25 @@ export default function Report() {
         onPress={() => setShowMonthPicker(true)}
         activeOpacity={0.7}
       >
-        <Ionicons name="calendar-outline" size={18} color="#4F46E5" />
+        <View
+          style={[
+            styles.monthDropdownIconWrap,
+            { backgroundColor: themeColors.background },
+          ]}
+        >
+          <Ionicons name="calendar-outline" size={16} color="#4F46E5" />
+        </View>
         <Text style={[styles.monthDropdownText, { color: themeColors.text }]}>
           {selectedMonthTitle}
         </Text>
-        <Ionicons name="chevron-down" size={18} color={themeColors.subText} />
+        <View
+          style={[
+            styles.monthDropdownChevron,
+            { backgroundColor: themeColors.background },
+          ]}
+        >
+          <Ionicons name="chevron-down" size={16} color={themeColors.subText} />
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -799,6 +865,29 @@ export default function Report() {
                 themeColors={themeColors}
               />
             </View>
+            {previousMonthComparison && (
+              <View style={styles.summaryRow}>
+                <SummaryCard
+                  title={`Vs ${previousMonthComparison.prevKey}`}
+                  value={`${currencySymbol}${previousMonthComparison.prevTotal.toFixed(2)} (${previousMonthComparison.diff >= 0 ? "+" : "-"}${Math.abs(previousMonthComparison.percent).toFixed(1)}%)`}
+                  icon={
+                    previousMonthComparison.diff > 0
+                      ? "trending-up-outline"
+                      : previousMonthComparison.diff < 0
+                        ? "trending-down-outline"
+                        : "remove-outline"
+                  }
+                  color={
+                    previousMonthComparison.diff > 0
+                      ? "#EF4444"
+                      : previousMonthComparison.diff < 0
+                        ? "#10B981"
+                        : "#6B7280"
+                  }
+                  themeColors={themeColors}
+                />
+              </View>
+            )}
 
             {/* View Switcher */}
             <ViewSegmentControl
@@ -811,7 +900,12 @@ export default function Report() {
             <Animated.View
               style={[
                 styles.contentCardContainer,
-                { opacity: fadeAnim, backgroundColor: themeColors.card },
+                {
+                  opacity: fadeAnim,
+                  backgroundColor: themeColors.card,
+                  borderColor: themeColors.border,
+                  borderWidth: 1,
+                },
               ]}
             >
               <View
@@ -986,8 +1080,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#fff",
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E5E7EB",
   },
@@ -996,7 +1090,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   headerTitle: {
     fontSize: 24,
@@ -1009,24 +1103,43 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  monthDropdownIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   monthDropdownText: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#1F2937",
+  },
+  monthDropdownChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -1036,13 +1149,9 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     maxHeight: "70%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 20,
+    borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 10,
+    // shadowColor: "#000",
   },
   monthPickerHeader: {
     flexDirection: "row",
@@ -1094,38 +1203,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+    padding: 14,
+    paddingBottom: 32,
   },
   // Summary
   summaryRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   // Main Card
   contentCardContainer: {
     backgroundColor: "#fff",
-    borderRadius: 24,
-    minHeight: 300,
+    borderRadius: 12,
+    minHeight: 280,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   contentCardInner: {
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
     backgroundColor: "#fff",
     overflow: "hidden",
-    minHeight: 300,
+    minHeight: 280,
   },
   // Table
   tableContainer: {
     overflow: "hidden",
   },
   tableHeader: {
-    height: 40,
+    height: 36,
     backgroundColor: "#F9FAFB",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
@@ -1137,7 +1246,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   tableRow: {
-    height: 48,
+    height: 44,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },

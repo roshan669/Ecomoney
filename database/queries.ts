@@ -1,6 +1,6 @@
 import { eq, desc, gte, lte, and, sql } from 'drizzle-orm';
 import { getDatabase } from './init';
-import { expenses } from './schema';
+import { expenses, settings } from './schema';
 import type { NewExpense, Expense } from './schema';
 
 // Add a new expense
@@ -127,4 +127,54 @@ export async function deleteExpense(id: number) {
 export async function deleteExpensesForDate(date: string) {
     const db = getDatabase();
     await db.delete(expenses).where(eq(expenses.date, date));
+}
+
+// --- Settings queries ---
+
+// Get setting by key
+export async function getSetting(key: string): Promise<string | null> {
+    const db = getDatabase();
+    const result = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, key))
+        .limit(1);
+
+    return result[0]?.value || null;
+}
+
+// Set setting
+export async function setSetting(key: string, value: string) {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+
+    const existing = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, key))
+        .limit(1);
+
+    if (existing.length > 0) {
+        // Update existing
+        await db
+            .update(settings)
+            .set({ value, updatedAt: now })
+            .where(eq(settings.key, key));
+    } else {
+        // Insert new
+        await db
+            .insert(settings)
+            .values({ key, value, updatedAt: now });
+    }
+}
+
+// Get monthly budget
+export async function getMonthlyBudget(): Promise<number | null> {
+    const value = await getSetting('monthly_budget');
+    return value ? parseFloat(value) : null;
+}
+
+// Set monthly budget
+export async function setMonthlyBudget(budget: number) {
+    await setSetting('monthly_budget', budget.toString());
 }

@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 8,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     padding: 16,
     flexDirection: "row",
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
   },
   rowCurrency: {

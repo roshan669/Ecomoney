@@ -24,6 +24,13 @@ export function initializeDatabase() {
 
       CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
       CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
+      
+      CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL UNIQUE,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
 
         console.log('Database initialized successfully');

@@ -132,7 +132,6 @@ export default function AddExpenseScreen() {
       style={[s.root, { backgroundColor: themeColors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      ── Header ── */
       <View
         style={[
           s.header,
@@ -160,7 +159,6 @@ export default function AddExpenseScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/*  ── Amount hero ── */}
         <View
           style={[
             s.amountCard,
@@ -464,24 +462,24 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 24,
     fontWeight: "700",
     letterSpacing: 0.2,
   },
   scrollContent: {
-    padding: 20,
-    gap: 20,
+    padding: 16,
+    gap: 14,
     flexGrow: 1,
   },
   amountCard: {
-    borderRadius: 16,
-    padding: 15,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
   },
   amountRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    marginTop: 8,
+    marginTop: 6,
   },
   currencySymbol: {
     fontSize: 28,
@@ -497,7 +495,7 @@ const s = StyleSheet.create({
     letterSpacing: -1,
   },
   section: {
-    gap: 10,
+    gap: 8,
   },
   fieldLabel: {
     fontSize: 11,
@@ -505,7 +503,7 @@ const s = StyleSheet.create({
     letterSpacing: 1,
   },
   input: {
-    height: 52,
+    height: 48,
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
@@ -522,7 +520,7 @@ const s = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
   },
   predictionText: {
@@ -532,22 +530,22 @@ const s = StyleSheet.create({
   categoryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
   },
   categoryChip: {
     width: "47.5%",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1.5,
   },
   chipIconWrap: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -561,8 +559,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    height: 56,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 12,
     marginTop: 4,
   },
   submitBtnText: {
@@ -579,7 +577,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    height: 52,
+    height: 48,
     borderRadius: 12,
     paddingHorizontal: 16,
     borderWidth: 1,
@@ -599,7 +597,7 @@ const s = StyleSheet.create({
   datePickerContainer: {
     width: "100%",
     maxWidth: 360,
-    borderRadius: 24,
+    borderRadius: 12,
     padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },

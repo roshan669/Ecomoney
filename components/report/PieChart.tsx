@@ -43,8 +43,10 @@ export const MemoizedPieChart = memo(
     }, [stats?.categoryData]);
 
     useEffect(() => {
-      if (focusedKey == null && topCategoryKey) setFocusedKey(topCategoryKey);
-    }, [focusedKey, topCategoryKey]);
+      if (topCategoryKey) {
+        setFocusedKey(topCategoryKey);
+      }
+    }, [topCategoryKey]);
 
     const totalValue = useMemo(() => {
       if (typeof stats?.total === "number") return stats.total;
@@ -77,7 +79,7 @@ export const MemoizedPieChart = memo(
         (chartData ?? [])
           .filter((item: any) => {
             const v = item?.value ?? 0;
-            return totalValue > 0 ? v / totalValue >= 0.1 : v > 0;
+            return totalValue > 0 ? v / totalValue >= 0.01 : v > 0;
           })
           .map((item: any) => ({
             key: item?.categoryKey ?? item?.label ?? "",
@@ -94,9 +96,9 @@ export const MemoizedPieChart = memo(
         {/* ── Rounded semi-donut ── */}
         <View style={styles.chartWrapper}>
           <RoundedSemiDonut
-            cornerRadius={5}
+            cornerRadius={4}
             gapDeg={0}
-            separatorWidth={2}
+            separatorWidth={1}
             data={shuffleArray(donutData)}
             focusedKey={focusedKey}
             separatorColor={themeColors.card}

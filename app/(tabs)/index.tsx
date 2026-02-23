@@ -20,7 +20,7 @@ import {
   Modal,
   Pressable,
   Alert as RNAlert,
-  Image,
+  TextInput,
 } from "react-native";
 import DateTimePicker, { useDefaultStyles } from "react-native-ui-datepicker";
 import dayjs from "dayjs";
@@ -36,6 +36,7 @@ import Alert from "@/components/Alert.modal";
 import { getCategoryColor, getCategoryIcon } from "@/constants/categories";
 import notifee, { AndroidNotificationSetting } from "@notifee/react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getMonthlyBudget, setMonthlyBudget } from "@/database/queries";
 
 // --- Component: Expense Item Row ---
 
@@ -140,7 +141,11 @@ export default function Index() {
   const { deleteExpenseItem, loadExpenses } = useExpenses();
   const { setupDailyReminder } = useNotifications();
   const [pendingDeleteItem, setPendingDeleteItem] = useState<list | null>(null);
-  const [greeting, setGreeting] = useState<string>("Good Morning! ☀️");
+
+  // Budget state
+  const [monthlyBudget, setMonthlyBudgetState] = useState<number | null>(null);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
 
   const hasLoadedRef = useRef(false);
 
@@ -447,6 +452,101 @@ export default function Index() {
     return expList.reduce((sum, item) => sum + (item.value || 0), 0);
   }, [expList]);
 
+  // Load monthly budget from database
+  useEffect(() => {
+    const loadBudget = async () => {
+      try {
+        if (!dbInitialized) {
+          return;
+        }
+
+        const budget = await getMonthlyBudget();
+        setMonthlyBudgetState(budget);
+      } catch (error) {
+        console.error("Error loading budget:", error);
+      }
+    };
+    loadBudget();
+  }, [dbInitialized]);
+
+  const [monthlyTotalValue, setMonthlyTotalValue] = useState(0);
+
+  // Calculate days left in month and money remaining
+  const budgetStats = useMemo(() => {
+    if (!monthlyBudget) return null;
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const currentDay = today.getDate();
+    const daysLeft = lastDay - currentDay;
+    const moneyRemaining = monthlyBudget - monthlyTotalValue;
+
+    return {
+      daysLeft,
+      moneyRemaining,
+      dailyBudget: daysLeft > 0 ? moneyRemaining / daysLeft : 0,
+    };
+  }, [monthlyBudget, monthlyTotalValue]);
+
+  // Calculate and update monthly total spent
+  useEffect(() => {
+    const calculateMonthlyTotal = async () => {
+      try {
+        if (!dbInitialized) {
+          return;
+        }
+        const year = selectedDate.getFullYear();
+        const month = selectedDate.getMonth() + 1;
+        const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+        const allExpenses = await loadExpenses();
+        const monthExpenses = allExpenses.filter(
+          (exp) => exp.date >= startDate && exp.date <= endDate,
+        );
+        const total = monthExpenses.reduce((sum, exp) => sum + exp.value, 0);
+        setMonthlyTotalValue(total);
+      } catch (error) {
+        console.error("Error calculating monthly total:", error);
+      }
+    };
+    calculateMonthlyTotal();
+  }, [selectedDate, loadExpenses, expList, dbInitialized]);
+
+  // Save budget to database
+  const saveBudget = async () => {
+    const budget = parseFloat(budgetInput);
+    if (isNaN(budget) || budget <= 0) {
+      if (Platform.OS === "android") {
+        ToastAndroid.show(
+          "Please enter a valid budget amount",
+          ToastAndroid.SHORT,
+        );
+      } else {
+        RNAlert.alert("Invalid Budget", "Please enter a valid budget amount");
+      }
+      return;
+    }
+
+    try {
+      await setMonthlyBudget(budget);
+      setMonthlyBudgetState(budget);
+      setShowBudgetModal(false);
+      setBudgetInput("");
+      if (Platform.OS === "android") {
+        ToastAndroid.show("Budget saved successfully!", ToastAndroid.SHORT);
+      }
+    } catch (error) {
+      console.error("Error saving budget:", error);
+      if (Platform.OS === "android") {
+        ToastAndroid.show("Failed to save budget", ToastAndroid.SHORT);
+      }
+    }
+  };
+
   async function onCreateTriggerNotification() {
     // Check if user opted out of reminders
     const optedOut = await AsyncStorage.getItem("REMINDER_OPTED_OUT");
@@ -530,10 +630,10 @@ export default function Index() {
               gap: 10,
             }}
           >
-            <Ionicons name="wallet" size={20} color={themeColors.text} />
+            <Ionicons name="wallet" size={24} color={themeColors.text} />
             <Text
               style={{
-                fontSize: 18,
+                fontSize: 24,
                 fontWeight: "700",
                 color: themeColors.text,
                 letterSpacing: 0.5,
@@ -542,28 +642,6 @@ export default function Index() {
               EcoMoney
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.dateBadge, { backgroundColor: themeColors.card }]}
-            onPress={() => setShowDatePicker(true)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="calendar" size={12} color={themeColors.subText} />
-            <Text style={[styles.dateText, { color: themeColors.subText }]}>
-              {selectedDate.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year:
-                  selectedDate.getFullYear() !== new Date().getFullYear()
-                    ? "numeric"
-                    : undefined,
-              })}
-            </Text>
-            <Ionicons
-              name="chevron-down"
-              size={12}
-              color={themeColors.subText}
-            />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -574,26 +652,129 @@ export default function Index() {
           { backgroundColor: themeColors.background },
         ]}
       >
-        <View
-          style={styles.summaryCardContainer}
-          // activeOpacity={0.9}
-          // onPress={() => setShowDatePicker(true)}
-        >
+        <View style={styles.summaryCardContainer}>
           <LinearGradient
             colors={["#1207a9", "#4d44af"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.summaryGradient}
           >
-            <View>
-              <Text style={styles.summaryLabel}>
-                {isToday ? "Total Spent Today" : "Total Spent"}
-              </Text>
-              <Text style={styles.summaryValue}>
-                {currencySymbol}
-                {totalToday.toFixed(2)}
-              </Text>
+            {/* Top Row: Total & Date Badge */}
+            <View style={styles.summaryTopRow}>
+              <View>
+                <Text style={styles.summaryLabel}>
+                  {isToday ? "Total Spent Today" : "Total Spent"}
+                </Text>
+                <Text style={styles.summaryValue}>
+                  {currencySymbol}
+                  {totalToday.toFixed(2)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.dateBadge,
+                  { backgroundColor: "rgba(255, 255, 255, 0.2)" },
+                ]}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="calendar" size={12} color="#FFFFFF" />
+                <Text style={[styles.dateText, { color: "#FFFFFF" }]}>
+                  {selectedDate.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year:
+                      selectedDate.getFullYear() !== new Date().getFullYear()
+                        ? "numeric"
+                        : undefined,
+                  })}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
+
+            {/* Budget Section */}
+            {monthlyBudget === null ? (
+              <TouchableOpacity
+                style={styles.setBudgetButtonInGradient}
+                onPress={() => setShowBudgetModal(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="wallet-outline" size={16} color="#E0E7FF" />
+                <Text style={styles.setBudgetTextInGradient}>
+                  Set Monthly Budget
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.budgetContainerInGradient}>
+                <View style={styles.budgetHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.budgetLabelInGradient}>
+                      Monthly Budget
+                    </Text>
+                    <Text style={styles.budgetAmountInGradient}>
+                      {currencySymbol}
+                      {monthlyTotalValue.toFixed(2)} / {currencySymbol}
+                      {monthlyBudget.toFixed(2)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setBudgetInput(monthlyBudget.toString());
+                      setShowBudgetModal(true);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons
+                      name="settings-outline"
+                      size={18}
+                      color="#E0E7FF"
+                    />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.progressBarBgInGradient}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      {
+                        width: `${Math.min((monthlyTotalValue / monthlyBudget) * 100, 100)}%`,
+                        backgroundColor:
+                          monthlyTotalValue > monthlyBudget
+                            ? "#EF4444"
+                            : monthlyTotalValue > monthlyBudget * 0.8
+                              ? "#F59E0B"
+                              : "#10B981",
+                      },
+                    ]}
+                  />
+                </View>
+
+                {budgetStats && (
+                  <View style={styles.budgetStatsRow}>
+                    <View style={styles.budgetStatCard}>
+                      <Text style={styles.budgetStatLabel}>Used</Text>
+                      <Text style={styles.budgetStatValue}>
+                        {((monthlyTotalValue / monthlyBudget) * 100).toFixed(0)}
+                        %
+                      </Text>
+                    </View>
+                    <View style={styles.budgetStatCard}>
+                      <Text style={styles.budgetStatLabel}>Remaining</Text>
+                      <Text style={styles.budgetStatValue}>
+                        {currencySymbol}
+                        {Math.abs(budgetStats.moneyRemaining).toFixed(0)}
+                      </Text>
+                    </View>
+                    <View style={styles.budgetStatCard}>
+                      <Text style={styles.budgetStatLabel}>Days Left</Text>
+                      <Text style={styles.budgetStatValue}>
+                        {budgetStats.daysLeft}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
           </LinearGradient>
         </View>
       </View>
@@ -683,6 +864,108 @@ export default function Index() {
             >
               <Text style={styles.todayButtonText}>Go to Today</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Budget Modal */}
+      <Modal
+        visible={showBudgetModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBudgetModal(false)}
+      >
+        <Pressable
+          style={styles.datePickerOverlay}
+          onPress={() => setShowBudgetModal(false)}
+        >
+          <Pressable
+            style={[
+              styles.budgetModalContainer,
+              { backgroundColor: themeColors.card },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.datePickerHeader}>
+              <Text
+                style={[styles.datePickerTitle, { color: themeColors.text }]}
+              >
+                Set Monthly Budget
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowBudgetModal(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color={themeColors.subText} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.budgetInputContainer}>
+              <Text
+                style={[
+                  styles.budgetInputLabel,
+                  { color: themeColors.subText },
+                ]}
+              >
+                Enter your monthly budget amount
+              </Text>
+              <View
+                style={[
+                  styles.budgetInputWrapper,
+                  {
+                    backgroundColor: themeColors.background,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.budgetInputCurrency,
+                    { color: themeColors.subText },
+                  ]}
+                >
+                  {currencySymbol}
+                </Text>
+                <TextInput
+                  style={[styles.budgetTextInput, { color: themeColors.text }]}
+                  value={budgetInput}
+                  onChangeText={setBudgetInput}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                  placeholderTextColor={themeColors.subText}
+                  autoFocus
+                />
+              </View>
+            </View>
+
+            <View style={styles.budgetModalButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.budgetModalButton,
+                  styles.budgetCancelButton,
+                  { backgroundColor: themeColors.background },
+                ]}
+                onPress={() => {
+                  setShowBudgetModal(false);
+                  setBudgetInput("");
+                }}
+              >
+                <Text
+                  style={[
+                    styles.budgetCancelButtonText,
+                    { color: themeColors.text },
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.budgetModalButton, styles.budgetSaveButton]}
+                onPress={saveBudget}
+              >
+                <Text style={styles.budgetSaveButtonText}>Save Budget</Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -781,20 +1064,25 @@ const styles = StyleSheet.create({
   },
   // Split styles: Container handles shadow/shape, Gradient handles content
   summaryCardContainer: {
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: "#4F46E5", // Base color for shadow
     shadowColor: "#4F46E5",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   summaryGradient: {
-    padding: 20,
-    borderRadius: 20, // Match container
+    padding: 18,
+    borderRadius: 12, // Match container
+  },
+  summaryTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    marginBottom: 16,
   },
   summaryLabel: {
     color: "#E0E7FF",
@@ -811,14 +1099,14 @@ const styles = StyleSheet.create({
   dateBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderRadius: 12,
     gap: 4,
   },
   dateText: {
-    color: "#4F46E5",
+    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -835,7 +1123,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 12,
     // paddingVertical: 4,
     // shadowColor: "#000",
     // shadowOffset: { width: 0, height: 2 },
@@ -883,7 +1171,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#EFF6FF", // Light blue tint
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     marginRight: 12,
@@ -906,7 +1194,7 @@ const styles = StyleSheet.create({
   deleteBtn: {
     padding: 8,
     backgroundColor: "grey",
-    borderRadius: 8,
+    borderRadius: 12,
   },
   // Empty State
   emptyState: {
@@ -964,7 +1252,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 12,
     padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
@@ -995,6 +1283,207 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   todayButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  // Budget Styles
+  budgetContainer: {
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+  },
+  budgetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  budgetLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  budgetAmount: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 12,
+    backgroundColor: "#10B981",
+  },
+  budgetPercentage: {
+    fontSize: 12,
+    color: "#6B7280",
+    textAlign: "right",
+  },
+  setBudgetButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderStyle: "dashed",
+  },
+  setBudgetText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4F46E5",
+  },
+  // Budget Styles Inside Gradient
+  setBudgetButtonInGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 12,
+    padding: 10,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    borderStyle: "dashed",
+  },
+  setBudgetTextInGradient: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#E0E7FF",
+  },
+  budgetContainerInGradient: {
+    borderRadius: 12,
+  },
+  budgetStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 6,
+  },
+  budgetStatCard: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+  },
+  budgetStatLabel: {
+    fontSize: 8,
+    color: "#D6DCFF",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 3,
+    fontWeight: "600",
+  },
+  budgetStatValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  budgetLabelInGradient: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#D6DCFF",
+    marginBottom: 3,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  budgetAmountInGradient: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  progressBarBgInGradient: {
+    height: 7,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  // Budget Modal Styles
+  budgetModalContainer: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  budgetInputContainer: {
+    marginBottom: 20,
+  },
+  budgetInputLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 12,
+  },
+  budgetInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  budgetInputCurrency: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginRight: 8,
+  },
+  budgetTextInput: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+    padding: 12,
+  },
+  budgetModalButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  budgetModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  budgetCancelButton: {
+    backgroundColor: "#F3F4F6",
+  },
+  budgetCancelButtonText: {
+    color: "#1F2937",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  budgetSaveButton: {
+    backgroundColor: "#4F46E5",
+  },
+  budgetSaveButtonText: {
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
