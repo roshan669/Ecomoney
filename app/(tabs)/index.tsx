@@ -603,18 +603,14 @@ export default function Index() {
     await setupDailyReminder();
   }
 
-  const insets = useSafeAreaInsets();
-
   return (
     <View
-      style={[styles.container, { backgroundColor: themeColors.background }]}
+      style={[
+        styles.container,
+        { backgroundColor: themeColors.background, paddingTop: 5 },
+      ]}
     >
-      <StatusBar
-        barStyle={theme === "dark" ? "light-content" : "dark-content"}
-        backgroundColor={themeColors.background}
-      />
-
-      <View style={[styles.headerWrapper, { marginTop: insets.top }]}>
+      <View style={[styles.headerWrapper]}>
         <View
           style={{
             flexDirection: "row",
@@ -670,27 +666,44 @@ export default function Index() {
                   {totalToday.toFixed(2)}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.dateBadge,
-                  { backgroundColor: "rgba(255, 255, 255, 0.2)" },
-                ]}
-                onPress={() => setShowDatePicker(true)}
-                activeOpacity={0.7}
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
               >
-                <Ionicons name="calendar" size={12} color="#FFFFFF" />
-                <Text style={[styles.dateText, { color: "#FFFFFF" }]}>
-                  {selectedDate.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year:
-                      selectedDate.getFullYear() !== new Date().getFullYear()
-                        ? "numeric"
-                        : undefined,
-                  })}
-                </Text>
-                <Ionicons name="chevron-down" size={12} color="#FFFFFF" />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.datePrevBtn}
+                  onPress={() => {
+                    const prev = new Date(selectedDate);
+                    prev.setDate(prev.getDate() - 1);
+                    setSelectedDate(prev);
+                    loadExpensesForDate(prev);
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="chevron-back" size={16} color="#FFFFFF" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dateBadge,
+                    { backgroundColor: "rgba(255, 255, 255, 0.2)" },
+                  ]}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="calendar" size={12} color="#FFFFFF" />
+                  <Text style={[styles.dateText, { color: "#FFFFFF" }]}>
+                    {selectedDate.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year:
+                        selectedDate.getFullYear() !== new Date().getFullYear()
+                          ? "numeric"
+                          : undefined,
+                    })}
+                  </Text>
+                  <Ionicons name="chevron-down" size={12} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Budget Section */}
@@ -754,7 +767,15 @@ export default function Index() {
                     <View style={styles.budgetStatCard}>
                       <Text style={styles.budgetStatLabel}>Used</Text>
                       <Text style={styles.budgetStatValue}>
-                        {((monthlyTotalValue / monthlyBudget) * 100).toFixed(0)}
+                        {parseInt(
+                          ((monthlyTotalValue / monthlyBudget) * 100).toFixed(
+                            0,
+                          ),
+                        ) <= 100
+                          ? ((monthlyTotalValue / monthlyBudget) * 100).toFixed(
+                              0,
+                            )
+                          : ">100"}
                         %
                       </Text>
                     </View>
@@ -762,7 +783,9 @@ export default function Index() {
                       <Text style={styles.budgetStatLabel}>Remaining</Text>
                       <Text style={styles.budgetStatValue}>
                         {currencySymbol}
-                        {Math.abs(budgetStats.moneyRemaining).toFixed(0)}
+                        {budgetStats.moneyRemaining < 0
+                          ? 0
+                          : Math.abs(budgetStats.moneyRemaining).toFixed(0)}
                       </Text>
                     </View>
                     <View style={styles.budgetStatCard}>
@@ -1095,6 +1118,13 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: 0.5,
+  },
+  datePrevBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 10,
+    padding: 5,
+    justifyContent: "center",
+    alignItems: "center",
   },
   dateBadge: {
     flexDirection: "row",

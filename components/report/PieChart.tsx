@@ -21,17 +21,6 @@ export const MemoizedPieChart = memo(
   }: PieChartProps) => {
     const [focusedKey, setFocusedKey] = useState<string | null>(null);
 
-    function shuffleArray(array: any) {
-      for (let i = array.length - 1; i > 0; i--) {
-        // Pick a random index from 0 to i
-        const j = Math.floor(Math.random() * (i + 1));
-
-        // Swap the elements at i and j
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
-    }
-
     const topCategoryKey = useMemo(() => {
       if (!stats?.categoryData?.length) return null;
       const top = stats.categoryData.reduce(
@@ -96,10 +85,10 @@ export const MemoizedPieChart = memo(
         {/* ── Rounded semi-donut ── */}
         <View style={styles.chartWrapper}>
           <RoundedSemiDonut
-            cornerRadius={4}
-            gapDeg={0}
-            separatorWidth={1}
-            data={shuffleArray(donutData)}
+            innerRadius={100}
+            gapDeg={1.5}
+            separatorWidth={0.5}
+            data={donutData}
             focusedKey={focusedKey}
             separatorColor={themeColors.card}
             onSlicePress={(key) => {

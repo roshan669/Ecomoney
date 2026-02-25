@@ -26,41 +26,47 @@ const buildSlicePath = (
   endDeg: number,
   cornerR: number,
 ): string => {
-  // Angular offsets on each arc corresponding to cornerR.
-  const outerAng = (cornerR / outerR) * (180 / Math.PI);
-  const innerAng = (cornerR / innerR) * (180 / Math.PI);
+  const span = endDeg - startDeg;
+  // Clamp corner radius so corners don't overlap on tiny slices.
+  const maxByRing = (outerR - innerR) / 2;
+  const maxBySpan = innerR * (span / 2) * (Math.PI / 180); // inner arc is the binding constraint
+  const cr = Math.max(0, Math.min(cornerR, maxByRing, maxBySpan));
+
+  // Angular offsets on each arc corresponding to cr.
+  const outerAng = (cr / outerR) * (180 / Math.PI);
+  const innerAng = (cr / innerR) * (180 / Math.PI);
   const f = (n: number) => n.toFixed(3);
 
   // Outer corners (where outer arc meets flat faces).
   const p1a = polar(cx, cy, outerR, startDeg + outerAng); // outer arc start
-  const p1b = polar(cx, cy, outerR - cornerR, startDeg); // start face, outer end
+  const p1b = polar(cx, cy, outerR - cr, startDeg); // start face, outer end
   const p2a = polar(cx, cy, outerR, endDeg - outerAng); // outer arc end
-  const p2b = polar(cx, cy, outerR - cornerR, endDeg); // end face, outer end
+  const p2b = polar(cx, cy, outerR - cr, endDeg); // end face, outer end
 
   // Inner corners (where inner arc meets flat faces).
   const p3a = polar(cx, cy, innerR, endDeg - innerAng); // inner arc end
-  const p3b = polar(cx, cy, innerR + cornerR, endDeg); // end face, inner end
+  const p3b = polar(cx, cy, innerR + cr, endDeg); // end face, inner end
   const p4a = polar(cx, cy, innerR, startDeg + innerAng); // inner arc start
-  const p4b = polar(cx, cy, innerR + cornerR, startDeg); // start face, inner end
+  const p4b = polar(cx, cy, innerR + cr, startDeg); // start face, inner end
 
   const lg = endDeg - startDeg > 180 ? 1 : 0;
 
   return [
     `M ${f(p1b.x)} ${f(p1b.y)}`,
     // start-outer corner
-    `A ${f(cornerR)} ${f(cornerR)} 0 0 1 ${f(p1a.x)} ${f(p1a.y)}`,
+    `A ${f(cr)} ${f(cr)} 0 0 1 ${f(p1a.x)} ${f(p1a.y)}`,
     // outer arc
     `A ${outerR} ${outerR} 0 ${lg} 1 ${f(p2a.x)} ${f(p2a.y)}`,
     // end-outer corner
-    `A ${f(cornerR)} ${f(cornerR)} 0 0 1 ${f(p2b.x)} ${f(p2b.y)}`,
+    `A ${f(cr)} ${f(cr)} 0 0 1 ${f(p2b.x)} ${f(p2b.y)}`,
     // end face (outer end → inner end)
     `L ${f(p3b.x)} ${f(p3b.y)}`,
     // end-inner corner
-    `A ${f(cornerR)} ${f(cornerR)} 0 0 1 ${f(p3a.x)} ${f(p3a.y)}`,
+    `A ${f(cr)} ${f(cr)} 0 0 1 ${f(p3a.x)} ${f(p3a.y)}`,
     // inner arc (counter-clockwise)
     `A ${innerR} ${innerR} 0 ${lg} 0 ${f(p4a.x)} ${f(p4a.y)}`,
     // start-inner corner
-    `A ${f(cornerR)} ${f(cornerR)} 0 0 1 ${f(p4b.x)} ${f(p4b.y)}`,
+    `A ${f(cr)} ${f(cr)} 0 0 1 ${f(p4b.x)} ${f(p4b.y)}`,
     // Z closes with start face (p4b → p1b straight line)
     "Z",
   ].join(" ");
@@ -94,7 +100,7 @@ interface RoundedSemiDonutProps {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-const FOCUS_OFFSET = 10;
+const FOCUS_GROW = 8; // extra outer-radius pixels for the focused slice
 
 export const RoundedSemiDonut: React.FC<RoundedSemiDonutProps> = ({
   data,
@@ -110,9 +116,9 @@ export const RoundedSemiDonut: React.FC<RoundedSemiDonutProps> = ({
 }) => {
   const ringThickness = outerRadius - innerRadius;
   const hPad = 12;
-  const svgW = (outerRadius + hPad + FOCUS_OFFSET) * 2;
+  const svgW = (outerRadius + hPad + FOCUS_GROW) * 2;
   const cx = svgW / 2;
-  const cy = outerRadius + hPad + FOCUS_OFFSET;
+  const cy = outerRadius + hPad + FOCUS_GROW;
   const svgH = cy + ringThickness / 2 + 10;
 
   const total = useMemo(
@@ -144,35 +150,36 @@ export const RoundedSemiDonut: React.FC<RoundedSemiDonutProps> = ({
   return (
     <View style={styles.wrapper}>
       <Svg width={svgW} height={svgH}>
-        {slices.map((slice, i) => {
-          const focused = slice.key === focusedKey;
-          const dx = focused
-            ? (FOCUS_OFFSET * Math.cos(toRad(slice.midAngle))).toFixed(1)
-            : "0";
-          const dy = focused
-            ? (FOCUS_OFFSET * Math.sin(toRad(slice.midAngle))).toFixed(1)
-            : "0";
-          return (
-            <Path
-              key={i}
-              d={buildSlicePath(
-                cx,
-                cy,
-                outerRadius,
-                innerRadius,
-                slice.startDeg,
-                slice.endDeg,
-                cornerRadius,
-              )}
-              fill={slice.color}
-              opacity={focused ? 1 : 0.9}
-              stroke={separatorColor}
-              strokeWidth={separatorWidth}
-              transform={`translate(${dx}, ${dy})`}
-              onPress={() => onSlicePress(slice.key)}
-            />
-          );
-        })}
+        {/* Render non-focused slices first, then focused on top */}
+        {slices
+          .slice()
+          .sort((a, b) => {
+            if (a.key === focusedKey) return 1;
+            if (b.key === focusedKey) return -1;
+            return 0;
+          })
+          .map((slice) => {
+            const focused = slice.key === focusedKey;
+            return (
+              <Path
+                key={slice.key}
+                d={buildSlicePath(
+                  cx,
+                  cy,
+                  focused ? outerRadius + FOCUS_GROW : outerRadius,
+                  innerRadius,
+                  slice.startDeg,
+                  slice.endDeg,
+                  cornerRadius,
+                )}
+                fill={slice.color}
+                opacity={focused ? 1 : 0.85}
+                stroke={separatorColor}
+                strokeWidth={separatorWidth}
+                onPress={() => onSlicePress(slice.key)}
+              />
+            );
+          })}
       </Svg>
 
       {centerLabelComponent && (

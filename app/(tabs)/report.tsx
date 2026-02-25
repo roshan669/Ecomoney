@@ -857,16 +857,14 @@ export default function Report() {
                 color="#4F46E5"
                 themeColors={themeColors}
               />
-              <SummaryCard
+              {/* <SummaryCard
                 title="Top Category"
                 value={stats.topCategory.toLocaleUpperCase()}
                 icon="trending-up-outline"
                 color="#EC4899"
                 themeColors={themeColors}
-              />
-            </View>
-            {previousMonthComparison && (
-              <View style={styles.summaryRow}>
+              /> */}
+              {previousMonthComparison && (
                 <SummaryCard
                   title={`Vs ${previousMonthComparison.prevKey}`}
                   value={`${currencySymbol}${previousMonthComparison.prevTotal.toFixed(2)} (${previousMonthComparison.diff >= 0 ? "+" : "-"}${Math.abs(previousMonthComparison.percent).toFixed(1)}%)`}
@@ -886,8 +884,8 @@ export default function Report() {
                   }
                   themeColors={themeColors}
                 />
-              </View>
-            )}
+              )}
+            </View>
 
             {/* View Switcher */}
             <ViewSegmentControl
@@ -1080,7 +1078,7 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#fff",
-    paddingTop: 12,
+    paddingTop: 5,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E5E7EB",

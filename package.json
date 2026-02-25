@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "bundle": "cd android && gradlew bundleRelease"
+    "bundle": "cd android && gradlew bundleRelease",
+    "release": "cd android && gradlew assembleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -37,7 +38,6 @@
     "react-native": "0.81.5",
     "react-native-fast-tflite": "^2.0.0",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-gifted-charts": "^1.4.70",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",

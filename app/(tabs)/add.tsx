@@ -40,6 +40,7 @@ export default function AddExpenseScreen() {
   const [isPredicting, setIsPredicting] = useState(false);
   const [initialPrediction, setInitialPrediction] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateWarn, setDateWarn] = useState<string>("");
 
   const {
     addName,
@@ -59,6 +60,15 @@ export default function AddExpenseScreen() {
   useEffect(() => {
     loadModel();
   }, []);
+
+  useEffect(() => {
+    const today = new Date();
+    const isToday =
+      selectedDate.getFullYear() === today.getFullYear() &&
+      selectedDate.getMonth() === today.getMonth() &&
+      selectedDate.getDate() === today.getDate();
+    setDateWarn(isToday ? "" : "Not Today");
+  }, [selectedDate]);
 
   const handlePredict = async () => {
     if (!addName.trim() || isPredicting) return;
@@ -86,7 +96,7 @@ export default function AddExpenseScreen() {
 
   const handleSubmit = async () => {
     if (!addName.trim()) {
-      setNameError("Please enter an expense name.");
+      setNameError("Please enter an expense description.");
       return;
     }
     setNameError("");
@@ -136,7 +146,7 @@ export default function AddExpenseScreen() {
         style={[
           s.header,
           {
-            paddingTop: insets.top,
+            paddingTop: 5,
             backgroundColor: themeColors.background,
             borderBottomColor: themeColors.border,
           },
@@ -193,11 +203,11 @@ export default function AddExpenseScreen() {
         {/* ── Expense name ── */}
         <View style={s.section}>
           <Text style={[s.fieldLabel, { color: themeColors.subText }]}>
-            EXPENSE NAME
+            EXPENSE DESCRIPTION
           </Text>
           <TextInput
             ref={nameInputRef}
-            placeholder="e.g., Groceries, Taxi, Dinner"
+            placeholder="e.g.,Took Taxi, Had Dinner"
             value={addName}
             onChangeText={setAddName}
             onFocus={() => setNameError("")}
@@ -249,6 +259,46 @@ export default function AddExpenseScreen() {
                     : undefined,
               })}
             </Text>
+            {dateWarn ? (
+              <View
+                style={[
+                  s.dateBadge,
+                  {
+                    backgroundColor: themeColors.background,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="alert-circle"
+                  size={13}
+                  color={themeColors.danger}
+                />
+                <Text style={[s.dateBadgeText, { color: themeColors.danger }]}>
+                  {dateWarn}
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[
+                  s.dateBadge,
+                  {
+                    backgroundColor: themeColors.background,
+                    borderColor: themeColors.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-circle"
+                  size={13}
+                  color={themeColors.success}
+                />
+                <Text style={[s.dateBadgeText, { color: themeColors.success }]}>
+                  Today
+                </Text>
+              </View>
+            )}
+
             <Ionicons
               name="chevron-down"
               size={16}
@@ -586,6 +636,19 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: "500",
+  },
+  dateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  dateBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
   datePickerOverlay: {
     flex: 1,

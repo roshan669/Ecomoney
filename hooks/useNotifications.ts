@@ -31,7 +31,9 @@ export const useNotifications = () => {
       type: TriggerType.TIMESTAMP,
       timestamp: triggerDate.getTime(),
       repeatFrequency: RepeatFrequency.DAILY,
-      alarmManager: true,
+      alarmManager: {
+        allowWhileIdle: true,
+      }
     };
 
     await notifee.createTriggerNotification(
