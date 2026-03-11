@@ -142,7 +142,7 @@ export default function AddExpenseScreen() {
       style={[s.root, { backgroundColor: themeColors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View
+      {/*   <View
         style={[
           s.header,
           {
@@ -159,7 +159,7 @@ export default function AddExpenseScreen() {
           Add Expense
         </Text>
         <View style={s.iconBtn} />
-      </View>
+      </View> */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
